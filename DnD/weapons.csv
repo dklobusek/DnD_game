@@ -1,0 +1,38 @@
+weapon;no_dice;dice_dmg;dice_dmg_vers;damage_type;reach;weight;properties;proficiency_required
+Club;1;4;;Bludgeoning;5;2;Light;Simple Melee
+Dagger;1;4;;Piercing;5;1;Finesse, Light, Thrown (20/60);Simple Melee
+Greatclub;1;8;;Bludgeoning;5;10;Two-handed;Simple Melee
+Handaxe;1;6;;Slashing;5;2;Light, Thrown (20/60);Simple Melee
+Javelin;1;6;;Piercing;5;2;Thrown (30/120);Simple Melee
+Light Hammer;1;4;;Bludgeoning;5;2;Light, Thrown (20/60);Simple Melee
+Mace;1;6;;Bludgeoning;5;4;None;Simple Melee
+Quarterstaff;1;6;8;Bludgeoning;5;4;Versatile (1d8);Simple Melee
+Sickle;1;4;;Slashing;5;2;Light;Simple Melee
+Spear;1;6;8;Piercing;5;3;Thrown (20/60), Versatile (1d8);Simple Melee
+Battleaxe;1;8;10;Slashing;5;4;Versatile (1d10);Martial Melee
+Flail;1;8;;Bludgeoning;5;2;None;Martial Melee
+Glaive;1;1;;Slashing;10;6;Heavy, Reach, Two-handed;Martial Melee
+Greataxe;1;12;;Slashing;5;7;Heavy, Two-handed;Martial Melee
+Greatsword;2;6;;Slashing;5;6;Heavy, Two-handed;Martial Melee
+Halberd;1;1;;Slashing;10;6;Heavy, Reach, Two-handed;Martial Melee
+Lance;1;12;;Piercing;10;6;Reach, Special;Martial Melee
+Longsword;1;8;10;Slashing;5;3;Versatile (1d10);Martial Melee
+Maul;2;6;;Bludgeoning;5;10;Heavy, Two-handed;Martial Melee
+Morningstar;1;8;;Piercing;5;4;None;Martial Melee
+Pike;1;1;;Piercing;10;18;Heavy, Reach, Two-handed;Martial Melee
+Rapier;1;8;;Piercing;5;2;Finesse;Martial Melee
+Scimitar;1;6;;Slashing;5;3;Finesse, Light;Martial Melee
+Shortsword;1;6;;Piercing;5;2;Finesse, Light;Martial Melee
+Trident;1;6;;Piercing;5;4;Thrown (20/60), Versatile (1d8);Martial Melee
+War Pick;1;8;;Piercing;5;2;None;Martial Melee
+Warhammer;1;8;10;Bludgeoning;5;2;Versatile (1d10);Martial Melee
+Whip;1;4;;Slashing;10;3;Finesse, Reach;Martial Melee
+Light Crossbow;1;8;;Piercing;80;5;Ammunition, Loading, Two-handed;Simple Ranged
+Dart;1;4;;Piercing;20;0.25;Finesse, Thrown;Simple Ranged
+Shortbow;1;6;;Piercing;80;2;Ammunition, Two-handed;Simple Ranged
+Sling;1;4;;Bludgeoning;30;0.25;Ammunition;Simple Ranged
+Blowgun;1;1;;Piercing;25;1;Ammunition, Loading;Martial Ranged
+Hand Crossbow;1;6;;Piercing;30;3;Ammunition, Light, Loading;Martial Ranged
+Heavy Crossbow;1;1;;Piercing;100;18;Ammunition, Heavy, Loading, Two-handed;Martial Ranged
+Longbow;1;8;;Piercing;150;2;Ammunition, Heavy, Two-handed;Martial Ranged
+Net;0;0;;None;5;3;Special, Thrown;Martial Ranged

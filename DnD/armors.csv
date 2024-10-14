@@ -1,0 +1,13 @@
+armor;type;armor_class;max_dex_mod;weight;stealth_disadvantage;strength
+Padded;Light armor;11;99;8;True;0
+Leather;Light armor;11;99;10;False;0
+Studded Leather;Light armor;12;99;13;False;0
+Hide;Medium armor;12;2;12;False;0
+Chain Shirt;Medium armor;13;2;20;False;0
+Scale Mail;Medium armor;14;2;45;True;0
+Breastplate;Medium armor;14;2;20;False;0
+Half Plate;Medium armor;15;2;40;True;0
+Ring Mail;Heavy armor;14;0;40;True;0
+Chain Mail;Heavy armor;16;0;55;True;13
+Splint;Heavy armor;17;0;60;True;15
+Plate;Heavy armor;18;0;65;True;15

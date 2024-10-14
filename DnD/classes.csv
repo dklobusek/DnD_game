@@ -1,0 +1,14 @@
+class;hit_dice;hp_mod;primary_abilities;saving_throws;proficiencies;abilities
+Barbarian;12;0;Strength, Constitution;Strength, Constitution;Light & Medium Armor, Shields, Simple & Martial Weapons;Rage, Unarmored Defense, Reckless Attack, Danger Sense
+Bard;8;0;Charisma;Dexterity, Charisma;Light Armor, Simple Weapons, Hand Crossbows, Longswords, Rapiers, Shortswords;Bardic Inspiration, Spellcasting, Jack of All Trades, Song of Rest
+Cleric;8;0;Wisdom;Wisdom, Charisma;Light & Medium Armor, Shields, Simple Weapons;Divine Domain, Spellcasting, Channel Divinity, Divine Intervention
+Druid;8;0;Wisdom;Intelligence, Wisdom;Light & Medium Armor (non-metal), Shields, Clubs, Daggers, Darts, etc.;Druidic, Wild Shape, Spellcasting, Druid Circle
+Fighter;10;0;Strength, Dexterity, Constitution;Strength, Constitution;All Armor, Shields, Simple & Martial Weapons;Fighting Style, Second Wind, Action Surge, Martial Archetype
+Monk;8;0;Dexterity, Wisdom;Strength, Dexterity;Simple Weapons, Shortswords, one Artisan Tool;Unarmored Defense, Martial Arts, Ki, Unarmored Movement
+Paladin;10;0;Strength, Charisma;Wisdom, Charisma;All Armor, Shields, Simple & Martial Weapons;Divine Sense, Lay on Hands, Fighting Style, Divine Smite, Oath
+Ranger;10;0;Dexterity, Wisdom;Strength, Dexterity;Light & Medium Armor, Shields, Simple & Martial Weapons;Favored Enemy, Natural Explorer, Spellcasting, Hunter's Mark
+Rogue;8;0;Dexterity;Dexterity, Intelligence;Light Armor, Simple Weapons, Hand Crossbows, Longswords, Rapiers, Shortswords;Sneak Attack, Cunning Action, Thieves' Cant, Roguish Archetype
+Sorcerer;6;1;Charisma;Constitution, Charisma;Daggers, Darts, Slings, Quarterstaffs, Light Crossbows;Spellcasting, Sorcerous Origin, Metamagic, Sorcery Points
+Warlock;8;0;Charisma;Wisdom, Charisma;Light Armor, Simple Weapons;Otherworldly Patron, Pact Magic, Eldritch Invocations, Pact Boon
+Wizard;6;0;Intelligence;Intelligence, Wisdom;Daggers, Darts, Slings, Quarterstaffs, Light Crossbows;Spellcasting, Arcane Recovery, Arcane Tradition, Spell Mastery
+Artificer;8;0;Intelligence;Constitution, Intelligence;Light & Medium Armor, Shields, Simple Weapons, Thieves' Tools, Tinker’s Tools;Magical Tinkering, Spellcasting, Infusions, Artificer Specialist

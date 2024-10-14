@@ -1,0 +1,14 @@
+race;strength;dexterity;constitution;wisdom;intelligence;charisma;speed;special_attribute_mod;hp_per_lvl;abilities
+Hill Dwarf;;;2;1;;;25;;1;darkvision
+Mountain Dwarf;2;;2;;;;;;;darkvision
+High Elf;;2;;;1;;30;;;darkvision
+Wood Elf;;2;;1;;;30;;;darkvision
+Dark Elf;;2;;;;1;30;;;superiordarkvision
+Halfing;;2;;;;;25;;;
+Human;1;1;1;1;1;1;30;;;
+Dragonborn;2;;;;;1;30;;;
+Forest Gnome;;1;;;2;;25;;;
+Rock Gnome;;;1;;2;;25;;;
+Half-Elf;;;;;;2;30;2;;
+Half-Orc;2;;1;;;;30;;;
+Tiefling;;;;;1;2;30;;;
