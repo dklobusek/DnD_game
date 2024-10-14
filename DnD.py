@@ -1857,7 +1857,8 @@ main_menu.display_menu()
 
 pygame.quit()
 
-# MANUAL TESTING METHOD qwdqwd
+# MANUAL TESTING METHOD testing repo
+
 # y = "Ghoul"
 # x = Character(name=y).load_character((y+".pkl"))
 # x.wins = 0
