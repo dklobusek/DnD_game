@@ -109,6 +109,8 @@ class Character:
         self.features = features
         self.level = level
         self.initiative = initiative
+        self.behaviour = None
+        self.actions = 1
         
         self.position = set()
         self.team = None # 1 team one, 2 team two
@@ -120,7 +122,7 @@ class Character:
         
     def __str__ (self):
         abilities_str = "\n".join([f"{key.capitalize():<15}: {value:>2}" for key, value in self.abilities.items()])
-        return (f"Name: {self.name}\nLevel: {self.level}\nRace: {self.race}\nCharacter class: {self.class_name}\nBase HP: {self.instance_hp.base_hp}\nArmor class: {self.instance_armor_class.armor_class}\n::: Abilities :::\n{abilities_str}\n{self.instance_equipment}\n\n")
+        return (f"\n\nName: {self.name}\nLevel: {self.level}\nRace: {self.race}\nCharacter class: {self.class_name}\nBase HP: {self.instance_hp.base_hp}\nArmor class: {self.instance_armor_class.armor_class}\n::: Abilities :::\n{abilities_str}\n{self.instance_equipment}Default behaviour: {self.behaviour}\n")
 
     @staticmethod
     def get_data_instance():
@@ -571,40 +573,45 @@ class Action:
         # function only for PLAYERS
         # return input(f"\n{character.name} what do you want to do? ").lower().strip()
         
+        actions_list = ["move", "attack", "equip"]
             
-        actions_list = ["move", "main attack", "equip armor", "equip body clothing", "equip first weapon", 
-                        "equip weapon slot 2/shield", "equip weapon slot 3", "equip helmet", "equip googles", 
-                        "equip boots", "equip belt", "equip glove", "equip ring slot 1", "equip ring slot 2", 
-                        "equip amulet", "equip bracers", "equip tool sloot", "equip backpack", "equip quiver", 
-                        "equip instrument", "equip spellbook"]
+        # actions_list = ["move", "main attack", "equip armor", "equip body clothing", "equip first weapon", 
+        #                 "equip weapon slot 2/shield", "equip weapon slot 3", "equip helmet", "equip googles", 
+        #                 "equip boots", "equip belt", "equip glove", "equip ring slot 1", "equip ring slot 2", 
+        #                 "equip amulet", "equip bracers", "equip tool sloot", "equip backpack", "equip quiver", 
+        #                 "equip instrument", "equip spellbook"]
         
         # Get the player's input
         action_input = input("What do you want to do? ").lower().strip()
+        for action in actions_list:
+            print(f"{action}", sep=" / ")
         
-        # Split input into action and target (if target exists)
-        parts = action_input.split(maxsplit=1)
-        command = parts[0]
-        target = (parts[1] if len(parts) > 1 else None).title()  # target is the second word, if present
+        return action_input
         
-        # Normalize the list items by converting them to lowercase and replacing spaces with underscores
-        actions_mapping = {action.lower().replace(" ", "_"): action for action in actions_list}
+        # # Split input into action and target (if target exists)
+        # parts = action_input.split(maxsplit=1)
+        # command = parts[0]
+        # target = (parts[1] if len(parts) > 1 else None).title()  # target is the second word, if present
         
-        # Search for a partial match in the input command
-        for normalized_action, original_action in actions_mapping.items():
-            if command in normalized_action:
-                if "attack" in normalized_action and target:
-                    #check for valid enemy
-                    return target
+        # # Normalize the list items by converting them to lowercase and replacing spaces with underscores
+        # actions_mapping = {action.lower().replace(" ", "_"): action for action in actions_list}
+        
+        # # Search for a partial match in the input command
+        # for normalized_action, original_action in actions_mapping.items():
+        #     if command in normalized_action:
+        #         if "attack" in normalized_action and target:
+        #             #check for valid enemy
+        #             return target
                 
-                # if not attack
-                action_method = getattr(self, normalized_action, None)
-                if action_method:
-                    action_method(character)
-                else:
-                    print(f"Action '{original_action}' is not yet implemented.")
-                return  # Exit after the first match
+        #         # if not attack
+        #         action_method = getattr(self, normalized_action, None)
+        #         if action_method:
+        #             action_method(character)
+        #         else:
+        #             print(f"Action '{original_action}' is not yet implemented.")
+        #         return  # Exit after the first match
 
-        print("Action not recognized. Please try again.")
+        # print("Action not recognized. Please try again.")
 
     def get_possible_actions(self, character):
         
@@ -629,26 +636,26 @@ class Action:
     def can_move (self, character):
         return True
          
-    def move(self, character):
+    def move(self, character, move_points):
+        # method for Player Move
         # checking if Pygame screen is ON
         if self.screen is None:
             self.screen = self.initialize_screen()
         
         print (f"{character.name} your move")
         move = Move(character, self.character_manager, self.event_queue, self.screen)
-        move.run_game()  # Uruchom run_game bezpośrednio zamiast w wątku
+        cost = move.run_game(move_points)  # Uruchom run_game bezpośrednio zamiast w wątku
 
         # Oczekiwanie na wynik z kolejki
         pos = self.event_queue.get()
-        
-        #check cost of the move using A*
-        # self.character_manager.instance_event_manager.check_move(character, pos)
         
         print(f"Selected position: {pos}")
         if not any(c.position == pos for c in self.character_manager.characters.values()):
             self.character_manager.instance_event_manager.update_player_position(character, pos)
         else:
             print("That position is already occupied.")
+        
+        return cost
 
     def get_targets(self, character):
         # TODO iterate through enemy team and check if any of the target can be attacked, check for weapon reach (glaive or distance)
@@ -670,27 +677,36 @@ class Action:
     def get_targets_ranged(self, character):
         # TODO iterate through enemy team and check if any of the target can be attacked, check for weapon reach (glaive or distance)
 
+            # Determine the opposing team
+        opposing_team = (self.character_manager.instance_event_manager.team_two if character.team == 1 else self.character_manager.instance_event_manager.team_one)
+        
         list_of_targets = []
         
-        # check for potential targets
-        if character.team == 1:
-            for target in self.character_manager.instance_event_manager.team_two:
-                if target.instance_hp.status>-1:
-                    list_of_targets.append(target)
-        elif character.team == 2:
-            for target in self.character_manager.instance_event_manager.team_one:
-                if target.instance_hp.status>-1:
-                    list_of_targets.append(target)
-        
-        # self.character_manager.instance_AI.targets = list_of_targets
-        print(f"DEBUG: potential targets {list_of_targets}")
+        for target in opposing_team:
+            d = self.character_manager.instance_event_manager.distance (character.position, target.position)
+            if character.instance_equipment.first_weapon["reach"] > d:
+                list_of_targets.append(target)
         return list_of_targets
     
-    def can_attack_ranged (self, character):
-        # check if char can use ranged attack, calculate target
+    def choose_ranged_target (self, character):
+        
+        # check if char can use ranged attack, get possible targets
         if int(character.instance_equipment.first_weapon["reach"]) > 10:
             targets = self.get_targets_ranged (character)
             print (f"Potential targets to attack: {targets}")
+        else:
+            return False
+        
+        target_dict = {}
+        
+        # check 1st condition - attack modifiers and obstacles along the way   
+        if targets:
+            max_value = -float('inf')
+            for target in targets:
+                value = self.character_manager.instance_algorithms.check_path_to_target(character.position, target.position)
+                target_dict[target] = value
+        
+            
             if targets:
                 max_value = -float('inf')
                 for target in targets:
@@ -700,9 +716,6 @@ class Action:
                         best_target = target
                         print(best_target)
                 
-                d = self.character_manager.instance_event_manager.distance (character.position, best_target.position)
-                print(f"Distance to target {d}")
-                if character.instance_equipment.first_weapon["reach"] > d:
                     return best_target
         else:
             return False
@@ -872,80 +885,119 @@ class CharacterManager:
 class Player:
     def __init__ (self, character_manager):
         self.character_manager = character_manager
-        self.move_points = 30
-        self.possible_attacks = 1
+        self.move_points = None
+        self.possible_attacks = None
         self.bonus_action_available = True
+
+    def choose_action(self, character):
+        # simple method for choosing an action        
+        actions_list = ["move", "attack", "equip"]
+        print(" ------ List of Actions ------")
+        for action in actions_list:
+            print(f"{action} / ", end="")
+        
+        action_input = input("\nWhat do you want to do? ").lower().strip()
+        
+        return action_input
     
     def player_turn (self, character):
-        choose_action = self.choose_action(character)
-        
-        if choose_action == "attack":
-            target = self.pick_enemy()
-            if self.character_manager.instance_action.get_targets(character, target):
-                self.character_manager.instance_action.main_attack(character, target)
-        elif choose_action == "move":
-            self.character_manager.instance_action.move(character)
+        # reset move points to its default state
+        self.move_points = 600
+        self.possible_attacks = 2
+        while self.move_points>0 and self.possible_attacks>0:
+            # player turn
+            choose_action = self.choose_action(character)
+            
+            if choose_action == "attack":
+                target = self.pick_enemy(character)
+                if target:
+                    self.character_manager.instance_action.main_attack(character, target)
+                    self.possible_attacks -= 1
+            elif choose_action == "move":
+                cost = self.character_manager.instance_action.move(character, self.move_points)
+                print(f"DEBUG: Trying to New self.movepoints={self.move_points}-{cost}")
+                self.move_points -= cost
 
     
-    def pick_enemy(self):
-        # choosing enemy
+    def pick_enemy(self, character):
+        # choosing enemy and checking if it is a valid target
         while True:
-            choose_target = (input("Pick enemy to attack: ")).title()
+            choose_target = (input("Pick enemy to attack: "))
             x = self.character_manager.get_character(choose_target)
-            if choose_target in self.character_manager.instance_event_manager.team_two and x.instance_hp.status>-1:
-                return self.character_manager.get_character(choose_target)
+            if x in self.character_manager.instance_event_manager.team_two and x.instance_hp.status>-1 and self.character_manager.instance_event_manager.is_adjacent(character.position, x.position):
+                return x
             elif choose_target == "pass":
-                print ("Skipping move")
-                break
+                print ("Skipping action")
+                return False
             else:
                 print ("Invalid target")
 
 class AI:
     def __init__ (self, character_manager):
         self.character_manager = character_manager
-        # self.targets = None # list of targets in each turn, reset after turn is over
+        self.behaviours = {
+            "ranged": Ranged_behaviour(self),
+            "melee": Melee_behaviour(self)
+        }
     
     def AI_turn (self, character):
-        print(f"\nAI {character.name} your move!")
-        while True:
-            #check if char can attack from distance
-            target = self.character_manager.instance_action.can_attack_ranged (character)
-            if target:
-                self.character_manager.instance_action.main_attack (character, target)
-                break
+        print(f"\nAI {character.name} move")
+
+        self.behaviours.get(character.behaviour).begin(character)
         
-            #check if targets can be attacked by AI
-            targets = self.character_manager.instance_action.get_targets(character)
-            
-            #check if targets can be attacked
-            if not targets:
-                print(f"DEBUG: AI moving!")
-                self.move_AI(character)
-                break
-            
-            if targets:
-                target = self.AI_choose_enemy(targets)
-                print(f"DEBUG: AI attacking!")
-                self.character_manager.instance_action.main_attack(character, target)
-                break
-            
+        move = True
+        action = True
+        
+        # while action is False:
+        #check if char can attack from distance
+        target = self.character_manager.instance_action.choose_ranged_target (character)
+        if target:
+            self.character_manager.instance_action.main_attack (character, target)
+            action = False
+    
+        #check if targets can be attacked by AI
+        targets = self.character_manager.instance_action.get_targets(character)
+        
+        #check if targets can be attacked
+        if not targets:
+            print(f"DEBUG: AI moving!")
+            self.move_AI(character)
+
+        if targets:
+            target = self.AI_choose_enemy(targets)
+            print(f"DEBUG: AI attacking!")
+            self.character_manager.instance_action.main_attack(character, target)
+
     def AI_choose_enemy (self, targets):
-        random_target = rd.choice(targets)
-        return random_target
+        # choose closes target
+        val = float('inf')
+        for target in targets:
+            path = self.character_manager.instance_algorithms.calc_pts_alongtheway (character.position, target.position)
+            if len(path)<val:
+                best_target = target
+                
+        return best_target
         
     def AI_pick_target_to_go(self, character):
         # choosing enemy from self list, random choice, cannot be attacked
-        list = []
+        targets = []
         
         if character.team == 1:
             for target in self.character_manager.instance_event_manager.team_two:
-                list.append(target)
+                targets.append(target)
         if character.team == 2:
             for target in self.character_manager.instance_event_manager.team_one:
-                list.append(target)
-                
-        choose_target = rd.choice(list)
-        return choose_target
+                targets.append(target)
+        
+        # choose closes target
+        val = float('inf')
+        for target in targets:
+            path = self.character_manager.instance_algorithms.calc_pts_alongtheway (character.position, target.position)
+            if len(path)<val:
+                best_target = target
+        
+        # choose_target = rd.choice(list)
+        return best_target
     
     def move_AI(self, character):
         #find a path to one of the potential targets
@@ -964,6 +1016,67 @@ class AI:
         
         pygame.event.pump()
         time.sleep(2.0)
+    
+class Melee_behaviour():
+    def __init__ (self, AIclass):
+        self.AIclass = AIclass
+        
+    def begin(self, character):
+        print ("Melee behaviour")
+        
+        opposing_team = (self.AIclass.character_manager.instance_event_manager.team_two if character.team == 1 else self.AIclass.character_manager.instance_event_manager.team_one)
+        
+        #if attack is possible
+        hp_dict = self.check_hp (opposing_team) # check HP score
+        ac_dict = self.check_ac (opposing_team) # check AC score
+        threat_dict = self.check_threat (opposing_team) # check threat level
+        
+        
+        
+        
+        ...
+    def check_hp (self, e_team):
+        score_dict = {}
+        for enemy in e_team:
+            c_hp = enemy.instance_hp.current_hp
+            m_hp = enemy.instance_hp.base_hp
+            ratio = c_hp / m_hp
+            score = 100 - (ratio * 100)
+            score_dict[enemy] = score
+        
+        print (f"DEBUG: score dict hp: {score_dict}")
+        return score_dict
+
+    def check_ac (self, e_team):
+        score_dict = {}
+        
+        ac_min = min(enemy.instance_armor_class.armor_class for enemy in e_team)
+        ac_max = max(enemy.instance_armor_class.armor_class for enemy in e_team)
+        
+        for enemy in e_team:
+            ac = enemy.instance_armor_class.armor_class
+            # TODO Unikamy dzielenia przez zero, gdy wszyscy mają ten sam AC
+            if ac_max == ac_min:
+                score = 0 if ac == ac_min else 100
+            else:
+                score = ((ac - ac_min) / (ac_max - ac_min)) * 100
+            score_dict[enemy] = max(0, min(score, 100))  # upewniamy się, że wartości są w zakresie 0-100
+
+        return score_dict
+    
+    def threat_level(self, e_team):
+        
+        
+        
+class Ranged_behaviour():
+    def __init__ (self, AIclass):
+        self.AIclass = AIclass
+
+    def begin(self, character):
+        # check for enemy in reach distance (also check for char weapon)
+        target = self.AIclass.character_manager.instance_action.choose_ranged_target (character)
+        print ("Ranged behaviour")
+        ...
      
 class EventManager:
     def __init__ (self, character_manager):
@@ -1034,92 +1147,59 @@ class EventManager:
         return surround
 
     def check_move(self, character, target_pos, move_points, is_Player = True):
+        # checking if target can be reached in move points limit
         
-        #initialize variable
         min_pos = None
-        adjacent_results = {}
-        self.visited[character.position] = (0, 0 , 0, None)
-        
-        # checking for target neighbours
-        target_neighbors = self.check_char_surround(target_pos)
-        target_neighbors.append(target_pos)
-        target_neighbors = [(neighbor) for neighbor in target_neighbors]
-        print(f"Target neighboors: {target_neighbors}")
+        self.path_queue = {}
+        # for initial position, total dist = dist
+        self.visited[character.position] = (0, self.distance(character.position, target_pos), self.distance(character.position, target_pos), None)
         
         while True:
             min_cost_pos = 0
             min_cost = float('inf')
             
-            if not self.queue:
-                print(f"DEBUG, {character.position} {target_pos} {self.visited}")
-                self.queue = self.calc_path(tuple(character.position), target_pos, 0, self.visited)
+            # first node, if no items in queue
+            if not self.path_queue:
+                self.path_queue = self.calc_path(character.position, target_pos, 0)
             
             # iterate through queue and find optimal path (min_pos) for the cost (min_cost_pos)
-            for position, values in self.queue.items():
+            for position, values in self.path_queue.items():
                 cost, distance, total_cost, parent = values
-                if total_cost<min_cost:
-                    min_cost = total_cost
+                if total_cost < min_cost:
                     min_pos = position
                     min_cost_pos = cost
-                    print (f"New cheapest found COST: {min_cost_pos} POSITION: {min_pos} TOTAL DISTANCE: {min_cost}")
+                    min_distance = distance
+                    min_cost = total_cost
+                    min_parent = parent
                  
             #checking if position is beyond character ability to move /// PLAYER
             if move_points<min_cost_pos and is_Player:
                 print("Target out of reach")
-                self.queue.clear()
-                self.visited.clear()
-                return True
-            
-            # checking if pos is at target destination /// PLAYER and AI
-            if min_pos == target_pos and is_Player:
-                print("Character reached destination")
-                self.queue.clear()
+                self.path_queue.clear()
                 self.visited.clear()
                 return False
             
-            print (f"Checking if min_pos: {min_pos} is in target neighboors: {target_neighbors}")
-            if min_pos in target_neighbors and is_Player==False:
-                break
-            
+            # checking if pos is at target destination /// PLAYER and AI
+            if min_pos == target_pos and is_Player and move_points>=min_cost_pos:
+                print("Character reached destination")
+                self.path_queue.clear()
+                self.visited.clear()
+                print(min_cost_pos)
+                return int(min_cost_pos)
             
             #removing to be checked node from queue
-            self.queue.pop(min_pos, None)
+            self.path_queue.pop(min_pos, None)
             
             # adding to be checked node to visited dict
-            self.visited[min_pos] = (min_cost_pos, distance, min_cost, parent)
+            self.visited[min_pos] = (min_cost_pos, min_distance, min_cost, min_parent)
             
             #calculating position around new position
-            new_positions = self.calc_path(min_pos, target_pos, min_cost_pos, self.visited)
+            new_positions = self.calc_path(min_pos, target_pos, min_cost_pos)
 
             # adding new node to be checked if cost is lower
             for pos, vals in new_positions.items():
-                if pos not in self.queue or vals[2] < self.queue[pos][2]:
-                    self.queue[pos] = vals
-        
-        #checking if position is beyond character ability to move /// AI /// outdside loop
-        if (move_points < min_cost_pos) and is_Player==False:
-            print("Checking condition for AI, target not reached")
-            path = {}
-            #adding last node to visited
-            self.visited[min_pos] = (min_cost_pos, distance, min_cost, parent)
-            
-            #building path back
-            while min_pos is not None:
-                values = self.visited[min_pos]
-                if min_pos in self.visited:
-                    path[min_pos] = (values[0], values[3])
-                    # print(f"DEBUG: {min_pos} {values[3]}")
-                    min_pos = values[3]
-            
-            closest_position = None
-            closest_cost = float('-inf')  # Start with the lowest possible value
-            
-            for position, (cost, _) in path.items():
-                if cost <= 30 and (closest_position is None or cost > closest_cost):
-                    closest_position = position
-                    closest_cost = cost
-            print(f"New position for character.name: {closest_position}")
-            return closest_position
+                if pos not in self.path_queue or vals[2] < self.path_queue[pos][2]:
+                    self.path_queue[pos] = vals
     
     def AI_check_move(self, character, target_pos, move_points, is_Player = False):
         
@@ -1133,8 +1213,6 @@ class EventManager:
         
         # list of all possible (empty) adjacent square around target, goal is to calculate all space around them
         target_neighbors = self.character_manager.instance_board.check_surrounding_occupied(target_pos)
-
-        self.path_queue = {}
             
         while True:
             min_cost = float('inf')
@@ -1265,7 +1343,7 @@ class EventManager:
     
     def teams_control(self):
         # if True then AI control
-        self.control_team_one = True
+        self.control_team_one = False
         self.control_team_two = True
         
     def update_characters_info(self):
@@ -1283,10 +1361,9 @@ class EventManager:
         self.team_two.clear()
         
         if not AI:
-            self.team_one = input("Team one, choose your team. Additional characters can be added after comma: ").split(",").title()
-            self.team_one = [character.strip() for character in self.team_one]
-            
-            for character in self.character_manager.characters:
+            self.team_one = [self.character_manager.get_character(member.strip().title()) for member in input("Team one, choose your team. Additional characters can be added after comma: ").split(",")]
+
+            for character in self.character_manager.characters.values():
                 if character not in self.team_one:
                     self.team_two.append(character)
             print(f"Team one: {self.team_one} /// Team two: {self.team_two}")
@@ -1349,7 +1426,7 @@ class EventManager:
             
     def start_combat(self):
         
-        AI = True # if AI true then teams are automatically assigned
+        AI = False # if AI true then teams are automatically assigned
         # creating teams and assigning char to them
         self.character_manager.instance_board.final_board()
         
@@ -1423,7 +1500,7 @@ class EventManager:
                 
                 character_name,_ = self.character_manager.initiative_order[self.turn_index]
                 current_character = self.character_manager.get_character(character_name)
-                # print(f"DEBUG: current char: {character_name}")
+                print(f"DEBUG: current char: {character_name}")
                 status = current_character.instance_hp.check_status(0,0)
                 if status == -1:
                     self.character_manager.instance_event_manager.remove_char(current_character)
@@ -1602,7 +1679,7 @@ class Algorithms():
         self.character_manager = character_manager
     
     def calc_pts_alongtheway (self, pos_start, pos_end):
-        
+        # returns squares that are intersected by line from start to end pos (straight ranged attack line)
         x1,y1 = pos_start
         x2,y2 = pos_end
         grid_size = 1
@@ -1611,13 +1688,11 @@ class Algorithms():
         path = set()
         line = LineString([(x1 + 0.5, y1 + 0.5), (x2 + 0.5, y2 + 0.5)])
 
-        # Iterujemy po komórkach siatki
         for x in range(min(x1, x2), max(x1, x2) + 1):
             for y in range(min(y1, y2), max(y1, y2) + 1):
                 cell = box(x, y, x + grid_size, y + grid_size)
                 intersection = line.intersection(cell)
 
-                # Sprawdzamy, czy długość przecięcia jest wystarczająco długa
                 if not intersection.is_empty and line.intersection(cell).length >= min_overlap:
                     path.add((x, y))
         path = [pos for pos in path if pos not in (pos_start, pos_end)]
@@ -1628,13 +1703,14 @@ class Algorithms():
         path = self.calc_pts_alongtheway (pos_start, pos_end)
         diff = 0
         path_len = len(path)
+        dict = {}
         
-        #for each character in the path
+        # check for any char in the way
         for char in self.character_manager.characters.values():
             if char.position in path:
                 diff += 1
         
-        #for each tree in the path
+        # check for any map obstacle in the way (tree in v1.0)
         for pos in path:
             if self.character_manager.instance_board.p_board[pos[0]][pos[1]] in self.character_manager.instance_board.board_signs[1]:
                 diff += 0.5
@@ -1672,9 +1748,9 @@ class MainMenu:
             print("5. Display loaded character")
             print("6. Exit")
             
-            print(f"Current statistics:")
-            for char in self.character_manager.characters.values():
-                print(f"\n{char.name}:\nWins:{char.wins}  Defeat: {char.defeats}  Games: {char.games}")
+            # print(f"Current statistics:")
+            # for char in self.character_manager.characters.values():
+            #     print(f"\n{char.name}:\nWins:{char.wins}  Defeat: {char.defeats}  Games: {char.games}")
 
             choice = input("Choose an option: ")
 
@@ -1685,6 +1761,7 @@ class MainMenu:
                 self.load_character()
             elif choice == '3':
                 self.start_game()
+                #method for infinite games
                 # n = 0
                 # while n<20:
                 #     self.start_game()
@@ -1707,7 +1784,7 @@ class MainMenu:
     
     def load_character(self):
         #TESTING MODE
-        characters_to_load = ["Milva", "Ghoul", "Aragorn", "Gimli","Geralt", "Legolas"]  # Lista nazw postaci do załadowania
+        characters_to_load = ["Orc", "Aragorn", "Gimli", "Balrog"]  # Lista nazw postaci do załadowania
         for name in characters_to_load:
             file_name = f"{name}.pkl"
             try:
@@ -1814,7 +1891,7 @@ class Move:
         
         pygame.display.update()  # Aktualizacja całego ekranu
 
-    def run_game(self):
+    def run_game(self, move_points):
         clock = pygame.time.Clock()
         running = True
         while running:
@@ -1830,19 +1907,19 @@ class Move:
                         for char in self.character_manager.characters.values():
                             print(f"{char.name} is at {char.position}")
                          
-                        cost = self.character_manager.instance_event_manager.check_move(self.character, (x,y), 30, True)
-                        if cost==True:
+                        cost = self.character_manager.instance_event_manager.check_move(self.character, (x,y),move_points, True)
+                        print(cost)
+                        if cost==False:
                             continue
-                        
-                        # Sprawdzamy, czy wybrane pole nie jest zajęte
-                        if not any(tuple(c.position) == (x, y) for c in self.character_manager.characters.values()):
-                            self.character_manager.instance_event_manager.update_player_position(self.character, (x,y))
-                            # self.character.position = (x,y)
-                            self.draw_board()
-                            self.event_queue.put((x, y))
-                            return  # Kończymy tylko pętlę, nie zamykając Pygame
                         else:
-                            print("Occupied!")
+                            print(cost)
+                            if not any(tuple(c.position) == (x, y) for c in self.character_manager.characters.values()):
+                                self.character_manager.instance_board.update_player_position(self.character, (x,y))
+                                self.draw_board()
+                                self.event_queue.put((x, y))
+                                return cost  # Kończymy tylko pętlę, nie zamykając Pygame
+                            else:
+                                print("Occupied!")
             # Rysowanie planszy
             self.draw_board()
             clock.tick(30)
@@ -1852,15 +1929,11 @@ os.system('cls')
 
 main_menu = MainMenu()
 main_menu.display_menu()
-
-
-
 pygame.quit()
 
 # MANUAL TESTING METHOD testing repo
 
-# y = "Ghoul"
+# y = "Aragorn"
 # x = Character(name=y).load_character((y+".pkl"))
-# x.wins = 0
-
-# x.save_character() testowe zmiany
+# x.behaviour ="melee"
+# x.save_character()
