@@ -109,8 +109,9 @@ class Character:
         self.features = features
         self.level = level
         self.initiative = initiative
-        self.behaviour = None
+        self.behaviour = None # TODO add a method
         self.actions = 1
+        self.move_points = 30 # TODO add a method
         
         self.position = set()
         self.team = None # 1 team one, 2 team two
@@ -570,23 +571,33 @@ class Action:
         self.screen = None
 
     def choose_action(self, character):
-        # function only for PLAYERS
-        # return input(f"\n{character.name} what do you want to do? ").lower().strip()
+        # function only for PLAYERS / outside combat
         
-        actions_list = ["move", "attack", "equip"]
+        actions_list = ["equip armor", "equip first weapon"]
             
         # actions_list = ["move", "main attack", "equip armor", "equip body clothing", "equip first weapon", 
         #                 "equip weapon slot 2/shield", "equip weapon slot 3", "equip helmet", "equip googles", 
         #                 "equip boots", "equip belt", "equip glove", "equip ring slot 1", "equip ring slot 2", 
         #                 "equip amulet", "equip bracers", "equip tool sloot", "equip backpack", "equip quiver", 
         #                 "equip instrument", "equip spellbook"]
-        
-        # Get the player's input
-        action_input = input("What do you want to do? ").lower().strip()
-        for action in actions_list:
-            print(f"{action}", sep=" / ")
-        
-        return action_input
+
+        while True:
+
+            for action in actions_list:
+                print(f"{action} / ", end="")
+            
+            action_input = input("\nWhat do you want to do? ").lower().strip()
+            
+            if action_input == "equip armor":
+                self.equip_armor (character)
+                continue
+            elif action_input == "equip first weapon":
+                self.equip_first_weapon (character)
+                continue
+            elif action_input == "pass":
+                break
+            else:
+                print ("Action not recognized. Type 'pass' to skip.")
         
         # # Split input into action and target (if target exists)
         # parts = action_input.split(maxsplit=1)
@@ -719,8 +730,7 @@ class Action:
                     return best_target
         else:
             return False
-        
-        
+           
     def equip_armor (self, character):
         if character:
             character.instance_equipment.armor_init()
@@ -917,6 +927,8 @@ class Player:
                 cost = self.character_manager.instance_action.move(character, self.move_points)
                 print(f"DEBUG: Trying to New self.movepoints={self.move_points}-{cost}")
                 self.move_points -= cost
+            elif choose_action == "pass":
+                break
 
     
     def pick_enemy(self, character):
@@ -1020,19 +1032,52 @@ class AI:
 class Melee_behaviour():
     def __init__ (self, AIclass):
         self.AIclass = AIclass
+        self.temp_mv_pts = None
+        self.temp_actions_pts = None
         
     def begin(self, character):
         print ("Melee behaviour")
         
-        opposing_team = (self.AIclass.character_manager.instance_event_manager.team_two if character.team == 1 else self.AIclass.character_manager.instance_event_manager.team_one)
+        final_weight = {}
+        self.temp_mv_pts = character.move_points
+        self.temp_actions_pts = character.actions
         
-        #if attack is possible
+        opposing_team = (self.AIclass.character_manager.instance_event_manager.team_two if character.team == 1 else self.AIclass.character_manager.instance_event_manager.team_one)
+
         hp_dict = self.check_hp (opposing_team) # check HP score
         ac_dict = self.check_ac (opposing_team) # check AC score
+        dis_dict = self.check_dist (opposing_team, character) # check cost move to target from char position
         threat_dict = self.check_threat (opposing_team) # check threat level
         
+        print(f"DEBUG: HP: {hp_dict} AC: {ac_dict} distance: {dis_dict} threat: {threat_dict}")
         
+        for character in hp_dict.keys():
+            hp_score = hp_dict[character] * 0.30
+            ac_score = ac_dict[character] * 0.10
+            threat_score = threat_dict[character] * 0.25
+            dis_score = dis_dict[character] * 0.35
+            
+            print(character.name, hp_score, ac_score, threat_score, dis_score)
+            
+            total_score = (hp_score + ac_score + threat_score + dis_score) / 4
+            
+            final_weight[character] = total_score
         
+        target = max(final_weight, key=final_weight.get)
+        
+        while True:
+            #try to attack target without move
+            if self.AIclass.character_manager.instance_event_manager.is_adjacent (character.position, target.position):
+                self.AIclass.character_manager.instance_action.main_attack (character, target)
+                self.temp_actions_pts -= 1
+                
+            dist = self.AIclass.character_manager.instance_algorithms.check_target_cost (character, target.position)
+            
+            # TODO introduce dash
+            # check target within move / dash
+            
+            if self.temp_mv_pts>=dist:
+            
         
         ...
     def check_hp (self, e_team):
@@ -1043,8 +1088,9 @@ class Melee_behaviour():
             ratio = c_hp / m_hp
             score = 100 - (ratio * 100)
             score_dict[enemy] = score
-        
-        print (f"DEBUG: score dict hp: {score_dict}")
+            print(f"DEBUG HP: {enemy.name} in score: {score}")
+            
+        print (score_dict)
         return score_dict
 
     def check_ac (self, e_team):
@@ -1064,9 +1110,70 @@ class Melee_behaviour():
 
         return score_dict
     
-    def threat_level(self, e_team):
+    def check_threat(self, e_team):
         
+        ac_min = min(enemy.instance_armor_class.armor_class for enemy in e_team)
+        ac_max = max(enemy.instance_armor_class.armor_class for enemy in e_team)
         
+        lvl_min = min(enemy.level for enemy in e_team)
+        lvl_max = max(enemy.level for enemy in e_team)
+        
+        hp_min = min(enemy.instance_hp.current_hp for enemy in e_team)
+        hp_max = max(enemy.instance_hp.current_hp for enemy in e_team)
+        
+        score_dict = {}
+        
+        for enemy in e_team:
+            hp = enemy.instance_hp.current_hp
+            if hp_max == hp_min:
+                score_1 = 0 if hp == hp_min else 100
+            else:
+                score_1 = ((hp - hp_min) / (hp_max - hp_min)) * 100
+
+            ac = enemy.instance_armor_class.armor_class
+            if ac_max == ac_min:
+                score_2 = 0 if ac == ac_min else 100
+            else:
+                score_2 = ((ac - ac_min) / (ac_max - ac_min)) * 100
+            
+            lvl = enemy.level  
+            if lvl_max == lvl_min:
+                score_3 = 0 if lvl == lvl_min else 100
+            else:
+                score_3 = ((lvl - lvl_min) / (lvl_max - lvl_min)) * 100
+            
+            # TODO add another methods, like spellcasters, damage etc.
+            
+            score_sum = (score_1+score_2+score_3) / 3
+            
+            score_dict[enemy] = score_sum
+        
+        return score_dict
+    
+    def check_dist (self, e_team, char):
+        
+        score_dict = {}
+        move_dict = {}
+        
+        for enemy in e_team:
+            move_pts = self.AIclass.character_manager.instance_algorithms.check_target_cost (char, enemy.position)
+            print (f"DEBUG, move_pts from checktarget cost {move_pts}")
+            move_dict[enemy] = move_pts
+            
+        max_move = max(move_dict.values())
+        min_move = min(move_dict.values())
+        
+        m_pts = char.move_points 
+    
+        for enemy, move_pts in move_dict.items():
+            if move_pts <= m_pts:
+                score_dict[enemy] = 100
+            elif m_pts < move_pts <= m_pts * 2:
+                score_dict[enemy] = 40
+            else:
+                score_dict[enemy] = 0
+
+        return score_dict    
         
 class Ranged_behaviour():
     def __init__ (self, AIclass):
@@ -1265,13 +1372,13 @@ class EventManager:
 
         #adding last node to visited
         self.visited[min_pos] = (min_cost_pos, min_distance, min_cost, min_parent)
-        print(f"Adjacent result: {adjacent_results}")
+        # print(f"Adjacent result: {adjacent_results}")
         
         # IMPORTANT! choosing best position around target path to be processed
         min_pos = min(adjacent_results, key=lambda pos: adjacent_results[pos][0])
-        print(f"Best: {adjacent_results}")
+        # print(f"Best: {adjacent_results}")
         
-        print(f"DEBUG: movepoints {move_points} cost pos {min_cost_pos}")
+        # print(f"DEBUG: movepoints {move_points} cost pos {min_cost_pos}")
         
         path = {}
         
@@ -1311,10 +1418,10 @@ class EventManager:
     def sort_path (self, path):
         sorted_path = sorted(path.items(), key=lambda item: item[1][0])  # item[1][0] is the cost value
         
-        print("Sorted Path from Lowest to Highest Cost:")
+        # print("Sorted Path from Lowest to Highest Cost:")
         for pos, (cost, distance, total_cost, parent) in sorted_path:
             print(f"Position: {pos}, Cost: {cost}, Distance: {distance} Total distance: {total_cost} Parent: {parent}")
-        print(f" Path found: {sorted_path}")
+        # print(f" Path found: {sorted_path}")
         
         return sorted_path
 
@@ -1677,6 +1784,9 @@ class Board:
 class Algorithms():
     def __init__ (self, character_manager):
         self.character_manager = character_manager
+        
+        self.path_queue = {}
+        self.visited = {}
     
     def calc_pts_alongtheway (self, pos_start, pos_end):
         # returns squares that are intersected by line from start to end pos (straight ranged attack line)
@@ -1732,6 +1842,138 @@ class Algorithms():
             return 50
         else: return 100
         
+    def is_adjacent (self, pos, target):
+        #check if pos is adjacent to target
+        x, y = pos
+        tx, ty = target
+        return abs(x - tx) <= 1 and abs(y - ty) <= 1 and pos != target
+        
+    def distance (self, pos, target):
+        x1,y1 = pos
+        x2,y2 = target
+        d = float(np.sqrt((x2 - x1)**2 + (y2 - y1)**2)) * 5
+        return d
+
+    def move_cost(self, new_pos, old_pos):
+        #TODO modify in future for terrain
+        x1,y1 = old_pos
+        x2,y2 = new_pos
+        
+        if x1==x2 or y1==y2:
+            cost = 5
+        else:
+            cost = 7.5
+
+        # check if new pos is hill, if is cost x2
+        if self.character_manager.instance_board.i_board[y2][x2] == self.character_manager.instance_board.board_signs[2]:
+            cost *=2
+            
+        return cost
+    
+    def calc_path(self, old_pos, tar_pos, cost_old):
+        # print(f"DEBUG Checking {old_pos}:")
+        x, y = old_pos
+        surround = {}
+        
+        moves = [
+            (-1, -1), (0, -1), (1, -1),
+            (-1, 0),          (1, 0),
+            (-1, 1),  (0, 1),  (1, 1) 
+        ]
+        
+        for dx, dy in moves:
+            new_x, new_y = x + dx, y + dy
+            pos = new_x, new_y
+
+            # Sprawdzenie, czy nowe współrzędne są w granicach planszy i nie były wcześniej odwiedzone
+            if 0 <= new_x < len(self.character_manager.instance_board.p_board[0]) and 0 <= new_y < self.character_manager.instance_board.size and pos not in self.visited:
+                # Sprawdzenie, czy pole jest oznaczone jako "E"
+                if self.character_manager.instance_board.p_board[new_y][new_x] in self.character_manager.instance_board.board_signs:
+                    d = self.distance([new_x, new_y], tar_pos)
+                    cost = self.move_cost([new_x, new_y], [x, y]) + cost_old
+                    total = d + cost
+                    surround[(new_x, new_y)] = (cost, d, total, old_pos)
+        
+        #print(f"DEBUG: calc_path, {surround} \n\n")
+        return surround
+
+    def get_adjacent_path (self, character, target_pos, target_neighbors):
+        
+        adjacent_results = {}
+        min_pos = None
+        
+        while True:
+            min_cost = float('inf')
+            
+            # first node, if no items in queue
+            if not self.path_queue:
+                self.path_queue = self.calc_path(character.position, target_pos, 0)
+            
+            # iterate through queue and find optimal path (min_pos) for the cost (min_cost_pos)
+            for position, values in self.path_queue.items():
+                cost, distance, total_cost, parent = values
+                if total_cost < min_cost:
+                    min_pos = position
+                    min_cost_pos = cost
+                    min_distance = distance
+                    min_cost = total_cost
+                    min_parent = parent
+            
+            # checking if founded position is in neighbors, if True, removing neighbors from the list
+            if min_pos in target_neighbors:
+                adjacent_results[min_pos] = self.path_queue[min_pos]
+                target_neighbors.remove(min_pos)
+        
+            if not target_neighbors:
+                self.visited[min_pos] = (min_cost_pos, min_distance, min_cost, min_parent)
+                return adjacent_results
+            
+            #removing to be checked node from queue
+            self.path_queue.pop(min_pos, None)
+            
+            # adding to be checked node to visited dict
+            self.visited[min_pos] = (min_cost_pos, min_distance, min_cost, min_parent)
+            
+            #calculating position around new position
+            new_positions = self.calc_path(min_pos, target_pos, min_cost_pos)
+
+            # adding new node to be checked if cost is lower
+            for pos, vals in new_positions.items():
+                if pos not in self.path_queue or vals[2] < self.path_queue[pos][2]:
+                    self.path_queue[pos] = vals
+    
+    def check_target_cost (self, character, target_pos):
+        
+        #clearing path / initialize
+        self.path_queue = {}
+        self.visited = {}
+        
+        # for initial position, total dist = dist
+        self.visited[character.position] = (0, self.distance(character.position, target_pos), self.distance(character.position, target_pos), None)
+        
+        # list of all possible (empty) adjacent square around target, goal is to calculate all space around them
+        target_neighbors = self.character_manager.instance_board.check_surrounding_occupied(target_pos)
+            
+        adjacent_results = self.get_adjacent_path (character, target_pos, target_neighbors)
+        
+        # IMPORTANT! looking for quickest path to target and returning its cost
+        min_cost = min(adjacent_results, key=lambda pos: adjacent_results[pos][0])
+        min_cost_pos = adjacent_results[min_cost][0]
+
+        print(f"DEBUG: Cost pos {min_cost_pos}")
+        
+        return min_cost_pos
+    
+    def sort_path (self, path):
+        sorted_path = sorted(path.items(), key=lambda item: item[1][0])  # item[1][0] is the cost value
+        
+        print("Sorted Path from Lowest to Highest Cost:")
+        for pos, (cost, distance, total_cost, parent) in sorted_path:
+            print(f"Position: {pos}, Cost: {cost}, Distance: {distance} Total distance: {total_cost} Parent: {parent}")
+        print(f" Path found: {sorted_path}")
+        
+        return sorted_path
+
 
 class MainMenu:
     def __init__ (self):
@@ -1935,5 +2177,5 @@ pygame.quit()
 
 # y = "Aragorn"
 # x = Character(name=y).load_character((y+".pkl"))
-# x.behaviour ="melee"
+# x.move_points = 30
 # x.save_character()
