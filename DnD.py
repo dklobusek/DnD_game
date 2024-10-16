@@ -895,9 +895,9 @@ class CharacterManager:
 class Player:
     def __init__ (self, character_manager):
         self.character_manager = character_manager
-        self.move_points = None
-        self.possible_attacks = None
-        self.bonus_action_available = True
+        
+        self.temp_mv_pts = None
+        self.temp_actions_pts = None
 
     def choose_action(self, character):
         # simple method for choosing an action        
@@ -912,24 +912,26 @@ class Player:
     
     def player_turn (self, character):
         # reset move points to its default state
-        self.move_points = 600
-        self.possible_attacks = 2
-        while self.move_points>0 and self.possible_attacks>0:
-            # player turn
+        print(f"\n>>> {character.name} turn <<<\n")
+        self.temp_mv_pts = character.move_points
+        self.temp_actions_pts = character.actions
+        
+        while self.temp_mv_pts>5 or self.temp_actions_pts>0:
             choose_action = self.choose_action(character)
             
-            if choose_action == "attack":
+            if choose_action == "attack" and self.temp_actions_pts>0:
                 target = self.pick_enemy(character)
                 if target:
                     self.character_manager.instance_action.main_attack(character, target)
-                    self.possible_attacks -= 1
-            elif choose_action == "move":
-                cost = self.character_manager.instance_action.move(character, self.move_points)
-                print(f"DEBUG: Trying to New self.movepoints={self.move_points}-{cost}")
-                self.move_points -= cost
+                    self.temp_actions_pts -= 1
+            elif choose_action == "move" and self.temp_mv_pts>=5:
+                cost = self.character_manager.instance_action.move(character, self.temp_mv_pts)
+                print(f"DEBUG: Trying to New self.movepoints={self.temp_mv_pts}-{cost}")
+                self.temp_mv_pts -= cost
             elif choose_action == "pass":
                 break
-
+            else:
+                print("Wrong action")
     
     def pick_enemy(self, character):
         # choosing enemy and checking if it is a valid target
@@ -957,28 +959,24 @@ class AI:
 
         self.behaviours.get(character.behaviour).begin(character)
         
-        move = True
-        action = True
-        
-        # while action is False:
-        #check if char can attack from distance
-        target = self.character_manager.instance_action.choose_ranged_target (character)
-        if target:
-            self.character_manager.instance_action.main_attack (character, target)
-            action = False
+        # #check if char can attack from distance
+        # target = self.character_manager.instance_action.choose_ranged_target (character)
+        # if target:
+        #     self.character_manager.instance_action.main_attack (character, target)
+        #     action = False
     
-        #check if targets can be attacked by AI
-        targets = self.character_manager.instance_action.get_targets(character)
+        # #check if targets can be attacked by AI
+        # targets = self.character_manager.instance_action.get_targets(character)
         
-        #check if targets can be attacked
-        if not targets:
-            print(f"DEBUG: AI moving!")
-            self.move_AI(character)
+        # #check if targets can be attacked
+        # if not targets:
+        #     print(f"DEBUG: AI moving!")
+        #     self.move_AI(character)
 
-        if targets:
-            target = self.AI_choose_enemy(targets)
-            print(f"DEBUG: AI attacking!")
-            self.character_manager.instance_action.main_attack(character, target)
+        # if targets:
+        #     target = self.AI_choose_enemy(targets)
+        #     print(f"DEBUG: AI attacking!")
+        #     self.character_manager.instance_action.main_attack(character, target)
 
     def AI_choose_enemy (self, targets):
         # choose closes target
@@ -1011,13 +1009,10 @@ class AI:
         # choose_target = rd.choice(list)
         return best_target
     
-    def move_AI(self, character):
-        #find a path to one of the potential targets
+    def move_AI(self, character, target, mv_pts):
+        # move towards target
         
-        target = self.AI_pick_target_to_go(character)
-        print (f"{character.name} on {character.position} is going towards {target.name} on {target.position}")
-        
-        pos = self.character_manager.instance_event_manager.AI_check_move(character, target.position, 30, False)
+        pos, pts_cost = self.character_manager.instance_event_manager.AI_check_move(character, target.position, mv_pts, False)
         self.character_manager.instance_board.update_player_position(character, pos)
         
         if self.character_manager.instance_action.screen is None:
@@ -1027,7 +1022,9 @@ class AI:
         move.draw_board()
         
         pygame.event.pump()
-        time.sleep(2.0)
+        time.sleep(0.5)
+        
+        return pts_cost
     
 class Melee_behaviour():
     def __init__ (self, AIclass):
@@ -1036,9 +1033,10 @@ class Melee_behaviour():
         self.temp_actions_pts = None
         
     def begin(self, character):
-        print ("Melee behaviour")
+        print(f"\n>>> {character.name} turn <<<\n")
         
         final_weight = {}
+        
         self.temp_mv_pts = character.move_points
         self.temp_actions_pts = character.actions
         
@@ -1049,37 +1047,55 @@ class Melee_behaviour():
         dis_dict = self.check_dist (opposing_team, character) # check cost move to target from char position
         threat_dict = self.check_threat (opposing_team) # check threat level
         
-        print(f"DEBUG: HP: {hp_dict} AC: {ac_dict} distance: {dis_dict} threat: {threat_dict}")
+        print(f"DEBUG: HP: { {character.name: score for character, score in hp_dict.items()} } AC: { {character.name: score for character, score in ac_dict.items()} } distance: { {character.name: score for character, score in dis_dict.items()} } threat: { {character.name: score for character, score in threat_dict.items()} }")
         
-        for character in hp_dict.keys():
-            hp_score = hp_dict[character] * 0.30
-            ac_score = ac_dict[character] * 0.10
-            threat_score = threat_dict[character] * 0.25
-            dis_score = dis_dict[character] * 0.35
-            
-            print(character.name, hp_score, ac_score, threat_score, dis_score)
+        for enemy in hp_dict.keys():
+            hp_score = hp_dict[enemy] * 0.30
+            ac_score = ac_dict[enemy] * 0.10
+            threat_score = threat_dict[enemy] * 0.25
+            dis_score = dis_dict[enemy] * 0.35
             
             total_score = (hp_score + ac_score + threat_score + dis_score) / 4
             
-            final_weight[character] = total_score
+            final_weight[enemy] = total_score
         
         target = max(final_weight, key=final_weight.get)
+        print(f"Picked target (based on weight) is: {target.name}")
         
-        while True:
+        while self.temp_actions_pts>0:
             #try to attack target without move
             if self.AIclass.character_manager.instance_event_manager.is_adjacent (character.position, target.position):
+                print("Attempting to attacking target from current position")
                 self.AIclass.character_manager.instance_action.main_attack (character, target)
                 self.temp_actions_pts -= 1
-                
+                break
+            
+            #check distance to target 
             dist = self.AIclass.character_manager.instance_algorithms.check_target_cost (character, target.position)
+            print (f"Distance to target is: {dist} : {character.name} to {target.name}")
             
-            # TODO introduce dash
-            # check target within move / dash
-            
+            # if the target is within move distance: move&attack
+            print(f"Check conditions: temp_mv_pts: {self.temp_mv_pts} distance: {dist}")
             if self.temp_mv_pts>=dist:
+                print("Moving to target within move limit and attack")
+                cost = self.AIclass.move_AI (character, target, self.temp_mv_pts)
+                self.temp_mv_pts -= cost
+                self.AIclass.character_manager.instance_action.main_attack (character, target)
+                self.temp_actions_pts -= 1
+                break
             
-        
-        ...
+            #using dash to reach the targets if all other fails
+            else:
+                # dash mode
+                self.temp_mv_pts *= 2
+                print("Moving to target, using dash")
+                cost = self.AIclass.move_AI (character, target, self.temp_mv_pts)
+                self.temp_mv_pts -= cost
+                self.temp_actions_pts -= 1
+                break
+            
+        print (f"End of turn info: mov points: {self.temp_mv_pts}, action pts: {self.temp_actions_pts}")
+
     def check_hp (self, e_team):
         score_dict = {}
         for enemy in e_team:
@@ -1088,28 +1104,26 @@ class Melee_behaviour():
             ratio = c_hp / m_hp
             score = 100 - (ratio * 100)
             score_dict[enemy] = score
-            print(f"DEBUG HP: {enemy.name} in score: {score}")
-            
-        print (score_dict)
+
         return score_dict
 
-    def check_ac (self, e_team):
+    def check_ac(self, e_team):
         score_dict = {}
-        
+
         ac_min = min(enemy.instance_armor_class.armor_class for enemy in e_team)
         ac_max = max(enemy.instance_armor_class.armor_class for enemy in e_team)
-        
+
         for enemy in e_team:
             ac = enemy.instance_armor_class.armor_class
-            # TODO Unikamy dzielenia przez zero, gdy wszyscy mają ten sam AC
+            # Unikamy dzielenia przez zero, gdy wszyscy mają ten sam AC
             if ac_max == ac_min:
-                score = 0 if ac == ac_min else 100
+                score = 100  # Jeśli wszyscy mają ten sam AC, wszyscy są "łatwym" celem
             else:
-                score = ((ac - ac_min) / (ac_max - ac_min)) * 100
+                score = (1 - (ac - ac_min) / (ac_max - ac_min)) * 100  # Odwracamy skalowanie, aby mniejsze AC dawało większy wynik
             score_dict[enemy] = max(0, min(score, 100))  # upewniamy się, że wartości są w zakresie 0-100
 
         return score_dict
-    
+
     def check_threat(self, e_team):
         
         ac_min = min(enemy.instance_armor_class.armor_class for enemy in e_team)
@@ -1157,11 +1171,7 @@ class Melee_behaviour():
         
         for enemy in e_team:
             move_pts = self.AIclass.character_manager.instance_algorithms.check_target_cost (char, enemy.position)
-            print (f"DEBUG, move_pts from checktarget cost {move_pts}")
             move_dict[enemy] = move_pts
-            
-        max_move = max(move_dict.values())
-        min_move = min(move_dict.values())
         
         m_pts = char.move_points 
     
@@ -1388,7 +1398,7 @@ class EventManager:
             self.visited.clear()
             sorted_path = self.sort_path(path)
             
-            return min_pos
+            return min_pos, min_cost_pos
         
         if (move_points < min_cost_pos) and is_Player == False:
             print("Checking condition for AI, target not reached")
@@ -1413,7 +1423,7 @@ class EventManager:
             self.visited.clear()
             sorted_path = self.sort_path(path)
             
-            return closest_position
+            return closest_position, closest_cost
     
     def sort_path (self, path):
         sorted_path = sorted(path.items(), key=lambda item: item[1][0])  # item[1][0] is the cost value
@@ -1959,8 +1969,6 @@ class Algorithms():
         # IMPORTANT! looking for quickest path to target and returning its cost
         min_cost = min(adjacent_results, key=lambda pos: adjacent_results[pos][0])
         min_cost_pos = adjacent_results[min_cost][0]
-
-        print(f"DEBUG: Cost pos {min_cost_pos}")
         
         return min_cost_pos
     
@@ -2175,7 +2183,7 @@ pygame.quit()
 
 # MANUAL TESTING METHOD testing repo
 
-# y = "Aragorn"
+# y = "Gimli"
 # x = Character(name=y).load_character((y+".pkl"))
 # x.move_points = 30
 # x.save_character()
