@@ -567,8 +567,6 @@ class Action:
     # set of actions that can be done in/out of combat
     def __init__ (self, character_manager):
         self.character_manager = character_manager
-        self.event_queue = queue.Queue()
-        self.screen = None
 
     def choose_action(self, character):
         # function only for PLAYERS / outside combat
@@ -637,36 +635,31 @@ class Action:
             actions.append("move_AI")
 
         return actions
-    
-    def initialize_screen(self):
-        pygame.init()
-        screen = pygame.display.set_mode((1200, 1200))
-        pygame.display.set_caption("Board Visualization")
-        return screen
 
     def can_move (self, character):
         return True
          
-    def move(self, character, move_points):
-        # method for Player Move
-        # checking if Pygame screen is ON
-        if self.screen is None:
-            self.screen = self.initialize_screen()
+    def move(self, char, pos, mv_pts):
+        # method for player move
         
-        print (f"{character.name} your move")
-        move = Move(character, self.character_manager, self.event_queue, self.screen)
-        cost = move.run_game(move_points)  # Uruchom run_game bezpośrednio zamiast w wątku
-
-        # Oczekiwanie na wynik z kolejki
-        pos = self.event_queue.get()
+        cost = self.character_manager.instance_event_manager.check_move(char, pos)
         
-        print(f"Selected position: {pos}")
-        if not any(c.position == pos for c in self.character_manager.characters.values()):
-            self.character_manager.instance_event_manager.update_player_position(character, pos)
+        if mv_pts>=cost:
+            # check if pos is occupied (double condition, but can be useful later)
+            for obj in self.character_manager.characters.values():
+                if obj.position == pos:
+                    return False
+            self.character_manager.instance_board.update_player_position(char, pos)
+            return cost
+            
         else:
-            print("That position is already occupied.")
+            return False
         
-        return cost
+        # if not any(c.position == pos for c in self.character_manager.characters.values()):
+        #     self.character_manager.instance_event_manager.update_player_position(char, pos)
+        # else:
+        #     print("That position is already occupied.")
+
 
     def get_targets(self, character):
         # TODO iterate through enemy team and check if any of the target can be attacked, check for weapon reach (glaive or distance)
@@ -866,9 +859,20 @@ class CharacterManager:
         self.instance_board = Board(self)
         self.instance_algorithms = Algorithms(self)
         
+        self.event_queue = queue.Queue()
+        self.instance_move = Move(self, self.event_queue)
+        
         self.characters = {}
         self.initiative_order = []
         
+        self.screen = None
+
+    def initialize_screen(self):
+        pygame.init()
+        screen = pygame.display.set_mode((1500, 1200))
+        pygame.display.set_caption("Board Visualization")
+        self.instance_move.screen = screen        
+          
     def add_character(self, character):
         self.characters[character.name] = character
     
@@ -896,55 +900,72 @@ class Player:
     def __init__ (self, character_manager):
         self.character_manager = character_manager
         
-        self.temp_mv_pts = None
-        self.temp_actions_pts = None
-
-    def choose_action(self, character):
-        # simple method for choosing an action        
-        actions_list = ["move", "attack", "equip"]
-        print(" ------ List of Actions ------")
-        for action in actions_list:
-            print(f"{action} / ", end="")
+        self.mv_pts = None
+        self.actions_pts = None
         
-        action_input = input("\nWhat do you want to do? ").lower().strip()
+    def interpret (self, char, pos):
+        #interpret what user click on Pygame board and do appropriate action
+        print (f"DEBUG: interpret function, for {char.name} on pos: {pos}")
         
-        return action_input
+        if self.is_char(pos):
+            for enemy in self.character_manager.characters.values():
+                if enemy.position == pos and self.actions_pts>0:
+                    if self.pick_enemy (char, enemy):
+                        self.character_manager.instance_action.main_attack(char, enemy)
+                        self.actions_pts -= 1
+        else:
+        # check possibility of movement
+            cost = self.character_manager.instance_action.move(char, pos, self.mv_pts)
+            if cost != False:
+                self.mv_pts -= cost
+                
+        return False
+        
+    def is_char (self, pos):
+        for obj in self.character_manager.characters.values():
+            if obj.position == pos:
+                return True
+        return False
+        
+    def is_enemy (self, char, pos):
+        ...
     
     def player_turn (self, character):
         # reset move points to its default state
         print(f"\n>>> {character.name} turn <<<\n")
-        self.temp_mv_pts = character.move_points
-        self.temp_actions_pts = character.actions
         
-        while self.temp_mv_pts>5 or self.temp_actions_pts>0:
-            choose_action = self.choose_action(character)
+        self.mv_pts = character.move_points
+        self.actions_pts = character.actions
+        
+        # TODO
+        self.character_manager.instance_move.run_game(character)
+        
+        # while self.mv_pts>5 or self.actions_pts>0:
+        #     choose_action = self.choose_action(character)
             
-            if choose_action == "attack" and self.temp_actions_pts>0:
-                target = self.pick_enemy(character)
-                if target:
-                    self.character_manager.instance_action.main_attack(character, target)
-                    self.temp_actions_pts -= 1
-            elif choose_action == "move" and self.temp_mv_pts>=5:
-                cost = self.character_manager.instance_action.move(character, self.temp_mv_pts)
-                print(f"DEBUG: Trying to New self.movepoints={self.temp_mv_pts}-{cost}")
-                self.temp_mv_pts -= cost
-            elif choose_action == "pass":
-                break
-            else:
-                print("Wrong action")
+        #     if choose_action == "attack" and self.actions_pts>0:
+        #         target = self.pick_enemy(character)
+        #         if target:
+        #             self.character_manager.instance_action.main_attack(character, target)
+        #             self.actions_pts -= 1
+        #     elif choose_action == "move" and self.mv_pts>=5:
+        #         cost = self.character_manager.instance_action.move(character, self.mv_pts)
+        #         print(f"DEBUG: Trying to New self.movepoints={self.mv_pts}-{cost}")
+        #         self.mv_pts -= cost
+        #     elif choose_action == "pass":
+        #         break
+        #     else:
+        #         print("Wrong action")
     
-    def pick_enemy(self, character):
-        # choosing enemy and checking if it is a valid target
-        while True:
-            choose_target = (input("Pick enemy to attack: "))
-            x = self.character_manager.get_character(choose_target)
-            if x in self.character_manager.instance_event_manager.team_two and x.instance_hp.status>-1 and self.character_manager.instance_event_manager.is_adjacent(character.position, x.position):
-                return x
-            elif choose_target == "pass":
-                print ("Skipping action")
-                return False
-            else:
-                print ("Invalid target")
+    def pick_enemy(self, char, enemy):
+        # checking if it is a valid target
+        
+        opposing_team = (self.character_manager.instance_event_manager.team_two if char.team == 1 else self.character_manager.instance_event_manager.team_one)
+        
+        if enemy in opposing_team and enemy.instance_hp.status>-1 and self.character_manager.instance_event_manager.is_adjacent(char.position, enemy.position):
+            return True
+        else:
+            return False
 
 class AI:
     def __init__ (self, character_manager):
@@ -1015,30 +1036,25 @@ class AI:
         pos, pts_cost = self.character_manager.instance_event_manager.AI_check_move(character, target.position, mv_pts, False)
         self.character_manager.instance_board.update_player_position(character, pos)
         
-        if self.character_manager.instance_action.screen is None:
-            self.character_manager.instance_action.screen = self.character_manager.instance_action.initialize_screen()
-        
-        move = Move(character, self.character_manager, self.character_manager.instance_action.event_queue, self.character_manager.instance_action.screen)
-        move.draw_board()
-        
-        pygame.event.pump()
-        time.sleep(0.5)
-        
         return pts_cost
     
 class Melee_behaviour():
     def __init__ (self, AIclass):
         self.AIclass = AIclass
-        self.temp_mv_pts = None
-        self.temp_actions_pts = None
+        self.mv_pts = None
+        self.actions_pts = None
         
     def begin(self, character):
         print(f"\n>>> {character.name} turn <<<\n")
+        self.AIclass.character_manager.instance_move.character = character
+        self.AIclass.character_manager.instance_move.draw_turn_info()
+        pygame.display.update()
+        time.sleep (1)
         
         final_weight = {}
         
-        self.temp_mv_pts = character.move_points
-        self.temp_actions_pts = character.actions
+        self.mv_pts = character.move_points
+        self.actions_pts = character.actions
         
         opposing_team = (self.AIclass.character_manager.instance_event_manager.team_two if character.team == 1 else self.AIclass.character_manager.instance_event_manager.team_one)
 
@@ -1062,12 +1078,14 @@ class Melee_behaviour():
         target = max(final_weight, key=final_weight.get)
         print(f"Picked target (based on weight) is: {target.name}")
         
-        while self.temp_actions_pts>0:
+        time.sleep (1)
+        
+        while self.actions_pts>0:
             #try to attack target without move
             if self.AIclass.character_manager.instance_event_manager.is_adjacent (character.position, target.position):
                 print("Attempting to attacking target from current position")
                 self.AIclass.character_manager.instance_action.main_attack (character, target)
-                self.temp_actions_pts -= 1
+                self.actions_pts -= 1
                 break
             
             #check distance to target 
@@ -1075,26 +1093,26 @@ class Melee_behaviour():
             print (f"Distance to target is: {dist} : {character.name} to {target.name}")
             
             # if the target is within move distance: move&attack
-            print(f"Check conditions: temp_mv_pts: {self.temp_mv_pts} distance: {dist}")
-            if self.temp_mv_pts>=dist:
+            print(f"Check conditions: mv_pts: {self.mv_pts} distance: {dist}")
+            if self.mv_pts>=dist:
                 print("Moving to target within move limit and attack")
-                cost = self.AIclass.move_AI (character, target, self.temp_mv_pts)
-                self.temp_mv_pts -= cost
+                cost = self.AIclass.move_AI (character, target, self.mv_pts)
+                self.mv_pts -= cost
                 self.AIclass.character_manager.instance_action.main_attack (character, target)
-                self.temp_actions_pts -= 1
+                self.actions_pts -= 1
                 break
             
             #using dash to reach the targets if all other fails
             else:
                 # dash mode
-                self.temp_mv_pts *= 2
+                self.mv_pts *= 2
                 print("Moving to target, using dash")
-                cost = self.AIclass.move_AI (character, target, self.temp_mv_pts)
-                self.temp_mv_pts -= cost
-                self.temp_actions_pts -= 1
+                cost = self.AIclass.move_AI (character, target, self.mv_pts)
+                self.mv_pts -= cost
+                self.actions_pts -= 1
                 break
             
-        print (f"End of turn info: mov points: {self.temp_mv_pts}, action pts: {self.temp_actions_pts}")
+        print (f"End of turn info: mov points: {self.mv_pts}, action pts: {self.actions_pts}")
 
     def check_hp (self, e_team):
         score_dict = {}
@@ -1207,6 +1225,8 @@ class EventManager:
         # board and move variables
         self.path_queue = {}
         self.visited = {}
+        
+        
     
     def is_adjacent (self, pos, target):
         #check if pos is adjacent to target
@@ -1263,8 +1283,8 @@ class EventManager:
         #print(f"DEBUG: calc_path, {surround} \n\n")
         return surround
 
-    def check_move(self, character, target_pos, move_points, is_Player = True):
-        # checking if target can be reached in move points limit
+    def check_move(self, character, target_pos):
+        # return cost of reaching target position
         
         min_pos = None
         self.path_queue = {}
@@ -1289,15 +1309,15 @@ class EventManager:
                     min_cost = total_cost
                     min_parent = parent
                  
-            #checking if position is beyond character ability to move /// PLAYER
-            if move_points<min_cost_pos and is_Player:
-                print("Target out of reach")
-                self.path_queue.clear()
-                self.visited.clear()
-                return False
+            # #checking if position is beyond character ability to move /// PLAYER
+            # if move_points<min_cost_pos and is_Player:
+            #     print("Target out of reach")
+            #     self.path_queue.clear()
+            #     self.visited.clear()
+            #     return False
             
             # checking if pos is at target destination /// PLAYER and AI
-            if min_pos == target_pos and is_Player and move_points>=min_cost_pos:
+            if min_pos == target_pos: #and is_Player and move_points>=min_cost_pos:
                 print("Character reached destination")
                 self.path_queue.clear()
                 self.visited.clear()
@@ -1376,7 +1396,6 @@ class EventManager:
                 if pos not in self.path_queue or vals[2] < self.path_queue[pos][2]:
                     self.path_queue[pos] = vals
                     #print(f"{pos} added to checked queue")
-            time.sleep(0)
         
         #checking if position is beyond character ability to move AI /// outside loop
 
@@ -1561,6 +1580,9 @@ class EventManager:
         #updating information in character instance about team and control
         self.update_characters_info()
         
+        #initialize Pygame
+        self.character_manager.initialize_screen()
+        
         #start combat
         print(f"\nCombat started.")
         self.turn()
@@ -1579,8 +1601,8 @@ class EventManager:
             
             for _ in range(no_of_char):
                 
-                if self.character_manager.instance_action.screen is not None:
-                    pygame.event.pump()
+                # if self.character_manager.instance_action.screen is not None:
+                #     pygame.event.pump()
                 
                 no_team_one = len(self.team_two)
                 no_team_two = len(self.team_one)
@@ -2076,14 +2098,17 @@ class MainMenu:
         ...
 
 class Move:
-    def __init__(self, character, character_manager, event_queue, screen) -> None:
-        self.character = character
+    def __init__(self, character_manager, event_queue) -> None:
         self.character_manager = character_manager
+        self.character = None
+        
         self.tile_size = 30
-        self.screen = screen  # Przekazujemy ekran Pygame jako argument
+        self.screen = None  # Przekazujemy ekran Pygame jako argument
         self.white = (255, 255, 255)
         self.black = (0, 0, 0)
         self.event_queue = event_queue  # Kolejka do komunikacji między wątkami
+        
+        self.panel_width = 300
 
         self.colors = {
             "player": (0, 0, 255),  # Gracz - niebieski
@@ -2115,13 +2140,11 @@ class Move:
                 pygame.draw.rect(self.screen, color, rect)  # Rysowanie pola planszy
                 pygame.draw.rect(self.screen, self.black, rect, 1)  # Obrys kratki
 
-
         for character in self.character_manager.characters.values():
             if not hasattr(character, 'position'):
                 print(f"{character.name} has no position attribute!")
                 continue
 
-            
             x, y = character.position
             team_two = self.character_manager.instance_event_manager.team_two
             team_one = self.character_manager.instance_event_manager.team_one
@@ -2139,40 +2162,98 @@ class Move:
             initials = font.render(character.name[:2], True, self.white)
             self.screen.blit(initials, (x * self.tile_size + 5, y * self.tile_size + 5))
         
+        self.draw_interface()
         pygame.display.update()  # Aktualizacja całego ekranu
 
-    def run_game(self, move_points):
+    def draw_interface(self):
+        # Ustawienia panelu
+        self.panel_width = 300
+        panel_rect = pygame.Rect(40 * self.tile_size, 0, self.panel_width, 40 * self.tile_size)
+        pygame.draw.rect(self.screen, self.black, panel_rect)  # Czarne tło dla panelu
+
+        # Wywołanie funkcji do rysowania informacji o turze
+        self.draw_turn_info()
+
+        # Wywołanie funkcji do rysowania przycisku "END TURN"
+        self.draw_end_turn_button(self.panel_width)
+
+    def draw_turn_info(self):
+        # Rysowanie paska z nazwą postaci na górze z ramką
+        header_height = 60
+        header_width = self.panel_width - 20  # Szerokość mniejsza, aby dać trochę miejsca
+        header_x = 40 * self.tile_size + 10
+        header_y = 10
+        header_rect = pygame.Rect(header_x, header_y, header_width, header_height)
+        
+        # Białe tło paska i ramka
+        pygame.draw.rect(self.screen, self.white, header_rect)  
+        pygame.draw.rect(self.screen, self.black, header_rect, 2)  # Ramka wokół paska
+
+        # Nazwa postaci (większa czcionka)
+        name_font = pygame.font.Font(None, 32)
+        name_text = name_font.render(self.character.name, True, self.black)
+        name_text_rect = name_text.get_rect(center=(header_rect.centerx, header_rect.top + 20))
+        self.screen.blit(name_text, name_text_rect)
+        
+        # Tekst "turn" (mniejsza czcionka)
+        turn_font = pygame.font.Font(None, 24)
+        turn_text = turn_font.render("turn", True, self.black)
+        turn_text_rect = turn_text.get_rect(center=(header_rect.centerx, header_rect.top + 45))
+        self.screen.blit(turn_text, turn_text_rect)
+    
+    def draw_end_turn_button(self, panel_width):
+        # Przygotowanie przycisku "END TURN" na środku na dole panelu
+        button_height = 40
+        button_width = 240  # Szerokość przycisku
+        button_x = 40 * self.tile_size + (panel_width - button_width) // 2  # Środek panelu
+        button_y = 40 * self.tile_size - button_height - 10  # 10 pikseli od dolnej krawędzi
+        button_rect = pygame.Rect(button_x, button_y, button_width, button_height)
+        
+        pygame.draw.rect(self.screen, self.white, button_rect)  # Białe tło przycisku
+        pygame.draw.rect(self.screen, self.black, button_rect, 2)  # Ramka przycisku
+
+        # Tekst "END TURN" na przycisku
+        font = pygame.font.Font(None, 24)
+        button_text = font.render("END TURN", True, self.black)
+        button_text_rect = button_text.get_rect(center=button_rect.center)
+        self.screen.blit(button_text, button_text_rect)
+        
+        # Zapisywanie prostokąta przycisku do atrybutu klasy dla łatwego dostępu
+        self.end_turn_button_rect = button_rect
+
+    def run_game(self, character):
+        self.character = character
         clock = pygame.time.Clock()
         running = True
+        
         while running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
+                    
+                # detecting mouse click
                 elif event.type == pygame.MOUSEBUTTONDOWN:
-                    if event.button == 1:
-                        pos = event.pos
-                        x, y = pos[0] // self.tile_size, pos[1] // self.tile_size
-                        
-                        print("Current positions:")
-                        for char in self.character_manager.characters.values():
-                            print(f"{char.name} is at {char.position}")
-                         
-                        cost = self.character_manager.instance_event_manager.check_move(self.character, (x,y),move_points, True)
-                        print(cost)
-                        if cost==False:
+                    pos = event.pos
+                    x, y = pos[0] // self.tile_size, pos[1] // self.tile_size
+                    if event.button == 1 and 0 <= x < 40 and 0 <= y < 40: 
+                        # do something
+                        click_pos = ((x,y))
+                        cond = self.character_manager.instance_player.interpret (character, click_pos)
+            
+                        if cond==False:
+                            self.draw_board
+                            self.draw_interface
                             continue
-                        else:
-                            print(cost)
-                            if not any(tuple(c.position) == (x, y) for c in self.character_manager.characters.values()):
-                                self.character_manager.instance_board.update_player_position(self.character, (x,y))
-                                self.draw_board()
-                                self.event_queue.put((x, y))
-                                return cost  # Kończymy tylko pętlę, nie zamykając Pygame
-                            else:
-                                print("Occupied!")
-            # Rysowanie planszy
+                    
+                    # Sprawdzenie kliknięcia na przycisk "END TURN"
+                    if event.button == 1 and self.end_turn_button_rect.collidepoint(pos):
+                        print("END TURN clicked")
+                        # Możesz dodać kod do zakończenia tury lub dowolną inną akcję
+                        running = False  # Przerwanie pętli, aby zakończyć `run_game`
+                    
             self.draw_board()
-            clock.tick(30)
+            self.draw_interface()
+            clock.tick(10)
 
 os.system('cls')
 
