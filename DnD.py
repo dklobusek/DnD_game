@@ -111,9 +111,14 @@ class Character:
         self.features = features
         self.level = level
         self.initiative = initiative
+        
         self.behaviour = None # TODO add a method
-        self.actions = 1
+        
+        self.actions = 1 # TODO add a method
         self.move_points = 30 # TODO add a method
+        
+        self.c_actions = None # no of actions furing turn, default
+        self.c_move_points = None # move points during turn, default
         
         self.position = set()
         self.team = None # 1 team one, 2 team two
@@ -905,21 +910,31 @@ class Player:
         self.mv_pts = None
         self.actions_pts = None
         
+    def player_turn (self, character):
+        print(f"\n>>> {character.name} turn <<<\n")
+        
+        # reset move points to its default state
+        character.c_move_points = character.move_points
+        character.c_actions = character.actions
+        
+        # TODO
+        self.character_manager.instance_move.run_game(character)
+        
     def interpret (self, char, pos):
         #interpret what user click on Pygame board and do appropriate action
         print (f"DEBUG: interpret function, for {char.name} on pos: {pos}")
         
         if self.is_char(pos):
             for enemy in self.character_manager.characters.values():
-                if enemy.position == pos and self.actions_pts>0:
+                if enemy.position == pos and char.c_actions>0:
                     if self.pick_enemy (char, enemy):
                         self.character_manager.instance_action.main_attack(char, enemy)
-                        self.actions_pts -= 1
+                        char.c_actions -= 1
         else:
         # check possibility of movement
-            cost = self.character_manager.instance_action.move(char, pos, self.mv_pts)
+            cost = self.character_manager.instance_action.move(char, pos, char.c_move_points)
             if cost != False:
-                self.mv_pts -= cost
+                char.c_move_points -= cost
                 
         return False
         
@@ -931,33 +946,6 @@ class Player:
         
     def is_enemy (self, char, pos):
         ...
-    
-    def player_turn (self, character):
-        # reset move points to its default state
-        print(f"\n>>> {character.name} turn <<<\n")
-        
-        self.mv_pts = character.move_points
-        self.actions_pts = character.actions
-        
-        # TODO
-        self.character_manager.instance_move.run_game(character)
-        
-        # while self.mv_pts>5 or self.actions_pts>0:
-        #     choose_action = self.choose_action(character)
-            
-        #     if choose_action == "attack" and self.actions_pts>0:
-        #         target = self.pick_enemy(character)
-        #         if target:
-        #             self.character_manager.instance_action.main_attack(character, target)
-        #             self.actions_pts -= 1
-        #     elif choose_action == "move" and self.mv_pts>=5:
-        #         cost = self.character_manager.instance_action.move(character, self.mv_pts)
-        #         print(f"DEBUG: Trying to New self.movepoints={self.mv_pts}-{cost}")
-        #         self.mv_pts -= cost
-        #     elif choose_action == "pass":
-        #         break
-        #     else:
-        #         print("Wrong action")
     
     def pick_enemy(self, char, enemy):
         # checking if it is a valid target
@@ -1040,6 +1028,11 @@ class AI:
         
         return pts_cost
     
+    def update_char_pygame (self, char):
+        #update pygame info from behaviour classes
+        self.character_manager.instance_move.character = char
+        self.character_manager.instance_move.draw_turn_info()
+    
 class Melee_behaviour():
     def __init__ (self, AIclass):
         self.AIclass = AIclass
@@ -1048,8 +1041,9 @@ class Melee_behaviour():
         
     def begin(self, character):
         print(f"\n>>> {character.name} turn <<<\n")
-        self.AIclass.character_manager.instance_move.character = character
-        self.AIclass.character_manager.instance_move.draw_turn_info()
+        #update pygame info
+        self.AIclass.update_char_pygame(character)
+        
         pygame.display.update()
         time.sleep (1)
         
@@ -1210,10 +1204,17 @@ class Ranged_behaviour():
         self.AIclass = AIclass
 
     def begin(self, character):
+        print(f"\n>>> {character.name} turn <<<\n")
+        
+        #update Pygame info
+        self.AIclass.update_char_pygame(character)
+        
+        final_weight = {}
+        
         # check for enemy in reach distance (also check for char weapon)
         target = self.AIclass.character_manager.instance_action.choose_ranged_target (character)
         print ("Ranged behaviour")
-        ...
+        
      
 class EventManager:
     def __init__ (self, character_manager):
@@ -2124,7 +2125,6 @@ class Move:
         self.panel_bg = pygame.image.load("DnD_game/img/interface.jpg")
         self.panel_bg = pygame.transform.scale(self.panel_bg, (self.panel_width, 1300))
 
-        
         self.current_popup_pos = None
         self.current_popup_text = None
         
@@ -2217,8 +2217,11 @@ class Move:
         LEVEL = " ".join(["Level:", str(self.character.level)])
         ABIL = "Abilities: " + "/".join(str(value) for value in self.character.abilities.values())
         HP = " ".join(["HitPoints:", str(self.character.instance_hp.current_hp), "/", str(self.character.instance_hp.base_hp)])
+        BLANK = ""
+        MOVE_POINTS = " ".join(["Move points:", str(self.character.c_move_points)])
+        ACTIONS = " ".join(["Actions:", str(self.character.c_actions)])
         
-        all_text_lines = [RACE, CLASS, LEVEL, ABIL, HP]
+        all_text_lines = [RACE, CLASS, LEVEL, ABIL, HP, BLANK, MOVE_POINTS, ACTIONS ]
 
         y_offset = header_rect.top + 45
         
@@ -2404,5 +2407,5 @@ pygame.quit()
 
 # y = "Gimli"
 # x = Character(name=y).load_character((y+".pkl"))
-# x.move_points = 30
+# x.c_actions = None
 # x.save_character()
