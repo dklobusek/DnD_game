@@ -5,6 +5,8 @@ import pygame
 import queue, time
 import numpy as np
 from shapely.geometry import LineString, box
+import threading
+import ctypes
 
 class Data:
     # Class for loading data, Singleton approach
@@ -871,7 +873,7 @@ class CharacterManager:
         pygame.init()
         screen = pygame.display.set_mode((1500, 1200))
         pygame.display.set_caption("Board Visualization")
-        self.instance_move.screen = screen        
+        self.instance_move.screen = screen   
           
     def add_character(self, character):
         self.characters[character.name] = character
@@ -1328,6 +1330,7 @@ class EventManager:
             self.path_queue.pop(min_pos, None)
             
             # adding to be checked node to visited dict
+            print(min_pos, min_cost_pos, min_distance, min_cost, min_parent)
             self.visited[min_pos] = (min_cost_pos, min_distance, min_cost, min_parent)
             
             #calculating position around new position
@@ -1820,6 +1823,12 @@ class Algorithms():
         self.path_queue = {}
         self.visited = {}
     
+    def is_char (self, pos):
+        for obj in self.character_manager.characters.values():
+            if obj.position == pos:
+                return True
+        return False
+    
     def calc_pts_alongtheway (self, pos_start, pos_end):
         # returns squares that are intersected by line from start to end pos (straight ranged attack line)
         x1,y1 = pos_start
@@ -2109,6 +2118,17 @@ class Move:
         self.event_queue = event_queue  # Kolejka do komunikacji między wątkami
         
         self.panel_width = 300
+        self.panel_height = None
+        
+        # Wczytaj obraz tła panelu
+        self.panel_bg = pygame.image.load("DnD_game/img/interface.jpg")
+        self.panel_bg = pygame.transform.scale(self.panel_bg, (self.panel_width, 1300))
+
+        
+        self.current_popup_pos = None
+        self.current_popup_text = None
+        
+        self.panel_width = 300
 
         self.colors = {
             "player": (0, 0, 255),  # Gracz - niebieski
@@ -2169,15 +2189,50 @@ class Move:
         # Ustawienia panelu
         self.panel_width = 300
         panel_rect = pygame.Rect(40 * self.tile_size, 0, self.panel_width, 40 * self.tile_size)
-        pygame.draw.rect(self.screen, self.black, panel_rect)  # Czarne tło dla panelu
+        
+        self.screen.blit(self.panel_bg, panel_rect)
+        # pygame.draw.rect(self.screen, self.black, panel_rect)  # Czarne tło dla panelu
 
         # Wywołanie funkcji do rysowania informacji o turze
         self.draw_turn_info()
 
         # Wywołanie funkcji do rysowania przycisku "END TURN"
         self.draw_end_turn_button(self.panel_width)
+        
+    def draw_char_info (self):
+        header_height = 500
+        header_width = self.panel_width - 20
+        header_x = 40 * self.tile_size + 10
+        header_y = 80
+        header_rect = pygame.Rect(header_x, header_y, header_width, header_height)
+        
+        # Białe tło paska i ramka
+        pygame.draw.rect(self.screen, self.white, header_rect)  
+        pygame.draw.rect(self.screen, self.black, header_rect, 2)  # Ramka wokół paska
+        
+        turn_font = pygame.font.Font(None, 24)
+        
+        RACE = " ".join(["Race:", str(self.character.race)])
+        CLASS = " ".join(["Class:", str(self.character.class_name)])
+        LEVEL = " ".join(["Level:", str(self.character.level)])
+        ABIL = "Abilities: " + "/".join(str(value) for value in self.character.abilities.values())
+        HP = " ".join(["HitPoints:", str(self.character.instance_hp.current_hp), "/", str(self.character.instance_hp.base_hp)])
+        
+        all_text_lines = [RACE, CLASS, LEVEL, ABIL, HP]
+
+        y_offset = header_rect.top + 45
+        
+        for line in all_text_lines:
+            turn_text = turn_font.render(line, True, self.black)
+            turn_text_rect = turn_text.get_rect(topleft=(header_rect.left + 10, y_offset))
+            self.screen.blit(turn_text, turn_text_rect)
+            y_offset += turn_text.get_height() + 5  # Przesunięcie o wysokość linii + odstęp
+        
 
     def draw_turn_info(self):
+        
+        self.draw_char_info()
+        
         # Rysowanie paska z nazwą postaci na górze z ramką
         header_height = 60
         header_width = self.panel_width - 20  # Szerokość mniejsza, aby dać trochę miejsca
@@ -2202,9 +2257,8 @@ class Move:
         self.screen.blit(turn_text, turn_text_rect)
     
     def draw_end_turn_button(self, panel_width):
-        # Przygotowanie przycisku "END TURN" na środku na dole panelu
-        button_height = 40
-        button_width = 240  # Szerokość przycisku
+        button_height = 100
+        button_width = self.panel_width - 20
         button_x = 40 * self.tile_size + (panel_width - button_width) // 2  # Środek panelu
         button_y = 40 * self.tile_size - button_height - 10  # 10 pikseli od dolnej krawędzi
         button_rect = pygame.Rect(button_x, button_y, button_width, button_height)
@@ -2220,40 +2274,124 @@ class Move:
         
         # Zapisywanie prostokąta przycisku do atrybutu klasy dla łatwego dostępu
         self.end_turn_button_rect = button_rect
+        
+    def draw_popup(self, pos, text):
+        # Wymiary popupu
+        popup_width, popup_height = 150, 50
+        popup_x, popup_y = pos
+
+        # Ustawienie prostokąta dla popupu przy myszy
+        popup_rect = pygame.Rect(popup_x, popup_y, popup_width, popup_height)
+
+        # Rysowanie tła popupu
+        pygame.draw.rect(self.screen, self.white, popup_rect)
+        pygame.draw.rect(self.screen, self.black, popup_rect, 2)  # Ramka dla popupu
+
+        # Dodanie tekstu
+        font = pygame.font.Font(None, 20)
+        popup_text = font.render(text, True, self.black)
+        text_rect = popup_text.get_rect(center=popup_rect.center)
+        self.screen.blit(popup_text, text_rect)
+
+        # Aktualizacja ekranu, aby popup się pojawił
+        pygame.display.update(popup_rect)
+
+    def handle_right_click(self, pos):
+        # Pobieranie pozycji myszy na planszy
+        grid_x = pos[0] // self.tile_size
+        grid_y = pos[1] // self.tile_size
+        pos_board = (grid_x, grid_y)
+        
+        # Uruchomienie obliczania kosztu w osobnym wątku
+        thread = threading.Thread(target=self.calculate_cost, args=(pos_board, pos))
+        thread.start()
+
+    def calculate_cost(self, pos_board, pos):
+        if self.character_manager.instance_algorithms.is_char(pos_board):
+            cost = "Enemy"
+        else:
+            cost = str(self.character_manager.instance_event_manager.check_move(self.character, pos_board))
+
+        # Przechowuj tekst popupu i pozycję
+        self.current_popup_text = f"Move pts: {cost}"
+        self.current_popup_pos = pos  # Zapisujemy aktualną pozycję myszy
+        
+        # Wyświetlenie popupu tylko raz
+        self.draw_popup(self.current_popup_pos, self.current_popup_text)
+
+    def clear_popup(self, pos):
+        # Wymiary popupu
+        popup_width, popup_height = 150, 50
+        popup_x, popup_y = pos
+
+        # Ustawienie prostokąta dla popupu, który chcemy wyczyścić
+        popup_rect = pygame.Rect(popup_x, popup_y, popup_width, popup_height)
+
+        # Rysowanie planszy na miejscu popupu, aby go wyczyścić
+        pygame.draw.rect(self.screen, self.white, popup_rect)
+
+        # Aktualizacja ekranu, aby wyczyścić popup
+        pygame.display.update(popup_rect)
 
     def run_game(self, character):
         self.character = character
         clock = pygame.time.Clock()
         running = True
-        
+        last_pos = None
+
         while running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
-                    
-                # detecting mouse click
-                elif event.type == pygame.MOUSEBUTTONDOWN:
+
+                # detecting right mouse click (right button is 3)
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
+                    pos = event.pos
+                    self.handle_right_click(pos)
+
+                # detecting left mouse click
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     pos = event.pos
                     x, y = pos[0] // self.tile_size, pos[1] // self.tile_size
                     if event.button == 1 and 0 <= x < 40 and 0 <= y < 40: 
-                        # do something
-                        click_pos = ((x,y))
-                        cond = self.character_manager.instance_player.interpret (character, click_pos)
-            
-                        if cond==False:
-                            self.draw_board
-                            self.draw_interface
+                        click_pos = (x, y)
+                        
+                        cond = self.character_manager.instance_player.interpret(character, click_pos)
+                        
+                        if cond == False:
+                            self.draw_board()
+                            self.draw_interface()
                             continue
                     
                     # Sprawdzenie kliknięcia na przycisk "END TURN"
                     if event.button == 1 and self.end_turn_button_rect.collidepoint(pos):
                         print("END TURN clicked")
-                        # Możesz dodać kod do zakończenia tury lub dowolną inną akcję
                         running = False  # Przerwanie pętli, aby zakończyć `run_game`
-                    
+                
+                # Sprawdzanie ruchu myszy
+                elif event.type == pygame.MOUSEMOTION:
+                    pos = event.pos
+                    if last_pos and last_pos != pos:
+                        # Czyszczenie popupu tylko, gdy został wcześniej narysowany
+                        if self.current_popup_text:
+                            self.clear_popup(self.current_popup_pos)
+                            self.current_popup_text = ""  # Usunięcie tekstu popupu
+
+                    last_pos = pos
+
+            # Rysowanie planszy i interfejsu
             self.draw_board()
             self.draw_interface()
-            clock.tick(10)
+            
+            # Jeśli popup jest aktywny, rysuj go
+            if self.current_popup_text:
+                self.draw_popup(self.current_popup_pos, self.current_popup_text)
+        
+        # Aktualizacja ekranu
+        pygame.display.update()
+
+        clock.tick(10)
+
 
 os.system('cls')
 
