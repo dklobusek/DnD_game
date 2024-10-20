@@ -6,7 +6,7 @@ import queue, time
 import numpy as np
 from shapely.geometry import LineString, box
 import threading
-import ctypes
+from datetime import datetime
 
 class Data:
     # Class for loading data, Singleton approach
@@ -771,10 +771,17 @@ class Action:
 
         # calculate attack roll against target with all modifiers
         roll, attack_modifier, attack_roll = self.attack_roll(character, advantage, additional_mod)
-        print(f"{character.name} attacks {target.name}: {roll} + {attack_modifier} = {attack_roll}")
         
         # check for hit
         hit, critical = self.check_hit(roll, attack_roll, target)
+        
+        c_hit = f" target Hit" if hit else " target missed"
+        crit = f". Critical Hit!" if critical else ""
+        txt = f"{character.name} attacks {target.name}: {roll} + {attack_modifier} = {attack_roll},{c_hit}{crit}"
+        self.character_manager.ins_pgame.add_log(txt)
+        print(txt)
+        
+        
         
         # calculate damage, check in damage roll function for any immunities/reductions
         if hit:
@@ -785,9 +792,7 @@ class Action:
             if status == -1:
                 self.character_manager.instance_event_manager.remove_char(target)
                 print (f"Removing {target.name} in main attack function from list")
-                
-            
-            
+                    
         else:
             print(f"Target missed")
                 
@@ -867,7 +872,7 @@ class CharacterManager:
         self.instance_algorithms = Algorithms(self)
         
         self.event_queue = queue.Queue()
-        self.instance_move = Move(self, self.event_queue)
+        self.ins_pgame = Pgame(self, self.event_queue)
         
         self.characters = {}
         self.initiative_order = []
@@ -878,7 +883,7 @@ class CharacterManager:
         pygame.init()
         screen = pygame.display.set_mode((1500, 1200))
         pygame.display.set_caption("Board Visualization")
-        self.instance_move.screen = screen   
+        self.ins_pgame.screen = screen   
           
     def add_character(self, character):
         self.characters[character.name] = character
@@ -918,7 +923,7 @@ class Player:
         character.c_actions = character.actions
         
         # TODO
-        self.character_manager.instance_move.run_game(character)
+        self.character_manager.ins_pgame.run_game(character)
         
     def interpret (self, char, pos):
         #interpret what user click on Pygame board and do appropriate action
@@ -1030,8 +1035,8 @@ class AI:
     
     def update_char_pygame (self, char):
         #update pygame info from behaviour classes
-        self.character_manager.instance_move.character = char
-        self.character_manager.instance_move.draw_turn_info()
+        self.character_manager.ins_pgame.character = char
+        self.character_manager.ins_pgame.draw_turn_info()
     
 class Melee_behaviour():
     def __init__ (self, AIclass):
@@ -1586,6 +1591,8 @@ class EventManager:
         
         #initialize Pygame
         self.character_manager.initialize_screen()
+        self.character_manager.ins_pgame.draw_board()
+        self.character_manager.ins_pgame.draw_interface()
         
         #start combat
         print(f"\nCombat started.")
@@ -1720,7 +1727,7 @@ class Board:
     
     def final_board (self):
         # main function
-        self.size = 40
+        self.size = 35
         self.board_signs = [" . "," | "," /\\"]
         
         # method for creating empty board
@@ -1780,6 +1787,9 @@ class Board:
     def update_player_position(self, character, new_position):
         # main function for updating player position - within board and in Character instance
         print(f"{character.name} move from {character.position} to {new_position}")
+        if character.position != new_position:
+            txt = txt = f"{character.name} moves from {character.position} to {new_position}"
+            self.character_manager.ins_pgame.add_log (txt)
         
         #return old position state to original state
         old_position = character.position
@@ -1795,6 +1805,9 @@ class Board:
         for row in self.p_board:
             print(" ".join(row))
         print("\n")
+        
+        if character.position != new_position:
+            self.character_manager.ins_pgame.draw_board()
         
     def check_surrounding_occupied(self, pos):
         x, y = pos
@@ -2107,28 +2120,44 @@ class MainMenu:
         self.character_manager.instance_event_manager.board = []
         ...
 
-class Move:
+class Pgame:
     def __init__(self, character_manager, event_queue) -> None:
         self.character_manager = character_manager
         self.character = None
-        
-        self.tile_size = 30
-        self.screen = None  # Przekazujemy ekran Pygame jako argument
-        self.white = (255, 255, 255)
-        self.black = (0, 0, 0)
         self.event_queue = event_queue  # Kolejka do komunikacji między wątkami
         
+        self.BS = 35 # TODO, need to copy from self.character_manager.instance_board.size
+        self.tile_size = 30
+        
+        self.screen = None
+        self.white = (255, 255, 255)
+        self.black = (0, 0, 0)
+        
+        # interface panel
         self.panel_width = 300
+        self.frame_i = 20
         self.panel_height = None
         
-        # Wczytaj obraz tła panelu
+        # background
+        self.background = pygame.image.load("DnD_game/img/wall.png")
+        self.background = pygame.transform.scale(self.background, (1500,1200))
+        self.x_i = None
+        self.y_i = None
+        
+        # panel background
         self.panel_bg = pygame.image.load("DnD_game/img/interface.jpg")
-        self.panel_bg = pygame.transform.scale(self.panel_bg, (self.panel_width, 1300))
+        self.panel_bg = pygame.transform.scale(self.panel_bg, (self.panel_width, self.tile_size * self.BS ))
+        
+        # board dimensions
+        self.b_width = self.tile_size * self.BS
+        self.b_height = self.tile_size * self.BS
+        
+        self.screen_width, self.screen_height = None, None
+        
+        # Wczytaj obraz tła panelu
 
         self.current_popup_pos = None
         self.current_popup_text = None
-        
-        self.panel_width = 300
 
         self.colors = {
             "player": (0, 0, 255),  # Gracz - niebieski
@@ -2137,13 +2166,27 @@ class Move:
             "forest": (34, 139, 34),   # Ciemny zielony dla lasu
             "mountain": (169, 169, 169),  # Szary dla gór
         }
+        
+        self.logs = []  # Lista przechowująca logi (ostatnie 100 wpisów)
+        self.max_logs = 100  # Maksymalna liczba przechowywanych wpisów
+        self.log_scroll = 0  # Pozycja przewijania
+        self.line_height = 20  # Wysokość jednej linii tekstu w logach
 
     def draw_board(self):
-        self.screen.fill(self.white)
+        self.screen.blit(self.background, (0, 0))
+        self.screen_width, self.screen_height = self.screen.get_size()
+    
+        # Obliczenie offsetu (przesunięcia) w celu wyśrodkowania planszy
+        screen_m_width = self.screen_width - self.panel_width
+        self.offset_x = (screen_m_width - self.b_width) // 2
+        self.offset_y = (self.screen_height - self.b_height) // 8
         
-        for y in range(40):
-            for x in range(40):
-                rect = pygame.Rect(x * self.tile_size, y * self.tile_size, self.tile_size, self.tile_size)
+        frame_rect = pygame.Rect(self.offset_x - 5, self.offset_y - 5, self.b_width + 10, self.b_height + 10)  # Ramka wokół planszy
+        pygame.draw.rect(self.screen, self.black, frame_rect, 4)  # 5 to grubość ramki
+        
+        for y in range(self.BS):
+            for x in range(self.BS):
+                rect = pygame.Rect(x * self.tile_size + self.offset_x, y * self.tile_size + self.offset_y, self.tile_size, self.tile_size)
                 
                 # Dobieranie koloru w zależności od symbolu w self.i_board
                 terrain_type = self.character_manager.instance_board.i_board[y][x]
@@ -2171,100 +2214,167 @@ class Move:
             
             if character not in team_one and character not in team_two:
                 continue  # Przeskoczenie tej postaci
-
             
             color = self.colors["player"] if character in team_one else self.colors["enemy"]
-            player_rect = pygame.Rect(x * self.tile_size, y * self.tile_size, self.tile_size, self.tile_size)
+            player_rect = pygame.Rect(x * self.tile_size + self.offset_x, y * self.tile_size + self.offset_y, self.tile_size, self.tile_size)
             pygame.draw.rect(self.screen, color, player_rect)
             
             # Dodajemy inicjały na planszy
             font = pygame.font.Font(None, 18)
             initials = font.render(character.name[:2], True, self.white)
-            self.screen.blit(initials, (x * self.tile_size + 5, y * self.tile_size + 5))
+            self.screen.blit(initials, (x * self.tile_size + 5 + self.offset_x, y * self.tile_size + 5 + self.offset_y))
         
         self.draw_interface()
         pygame.display.update()  # Aktualizacja całego ekranu
 
     def draw_interface(self):
-        # Ustawienia panelu
-        self.panel_width = 300
-        panel_rect = pygame.Rect(40 * self.tile_size, 0, self.panel_width, 40 * self.tile_size)
+        # auto fit method, no variables
+                
+        self.x_i = self.screen_width - self.panel_width - self.frame_i
+        self.y_i = (self.screen_height - self.b_height) // 8
         
+        # background
+        panel_rect = pygame.Rect(self.x_i, self.y_i, self.panel_width, self.b_height)
         self.screen.blit(self.panel_bg, panel_rect)
-        # pygame.draw.rect(self.screen, self.black, panel_rect)  # Czarne tło dla panelu
+        
+        # frame around background
+        self.frame_i2 = 4
+        frame_rect = pygame.Rect(self.x_i-self.frame_i2, self.y_i, self.panel_width+self.frame_i2, self.b_height+self.frame_i2)
+        pygame.draw.rect(self.screen, self.black, frame_rect, self.frame_i2)  # Rysowanie ramki wokół panelu
 
         # Wywołanie funkcji do rysowania informacji o turze
         self.draw_turn_info()
 
         # Wywołanie funkcji do rysowania przycisku "END TURN"
-        self.draw_end_turn_button(self.panel_width)
+        self.draw_end_turn_button()
+        
+        self.draw_info()
+    
+    def draw_info(self):
+        # Tworzenie maskującej powierzchni dla logów (obszar, w którym logi będą widoczne)
+        info_surface = pygame.Surface((self.b_width + self.panel_width + (3 * self.frame_i), 100))
+        
+        # Tworzenie prostokąta dla powierzchni logów
+        info_rect = pygame.Rect(self.offset_x - 4, self.offset_y + self.b_height + 17, self.b_width + self.panel_width + (3 * self.frame_i), 100)
+        
+        # Ustawienie tła na białe
+        info_surface.fill(self.white)
+
+        # Wyświetlanie logów
+        max_lines = info_rect.height // self.line_height  # Maksymalna liczba wierszy w ramce
+        visible_logs = self.logs[max(0, len(self.logs) - max_lines - self.log_scroll): len(self.logs) - self.log_scroll]
+        visible_logs.reverse()
+        
+        log_font = pygame.font.SysFont('Arial', 16)  # Użyj czcionki Arial o rozmiarze 20
+        
+        # Rysowanie logów na nowej powierzchni
+        for i, log in enumerate(visible_logs):
+            log_surface = log_font.render(log, True, self.black)
+            info_surface.blit(log_surface, (5, 5 + i * self.line_height))
+        
+        # Rysowanie powierzchni logów w ramce (przypisanie info_surface do ekranu)
+        self.screen.blit(info_surface, info_rect)
+        
+        # adding frame
+        pygame.draw.rect(self.screen, self.black, info_rect, 4)
+
+        # Aktualizacja ekranu, aby logi się pojawiły
+        pygame.display.update()
+
+    def add_log(self, text):
+        """Dodaje nowy wpis do logu wraz z aktualną godziną."""
+        current_time = datetime.now().strftime("%H:%M:%S")  # Pobierz bieżącą godzinę w formacie HH:MM:SS
+        log_entry = f"[{current_time}] {text}"  # Dodaj godzinę przed tekstem logu
+        
+        if len(self.logs) >= self.max_logs:
+            self.logs.pop(0)  # Usuń najstarszy wpis, jeśli lista przekroczy limit 100
+        self.logs.append(log_entry)
+        
+        self.draw_info()
+        pygame.display.update()
+        
+    def handle_log_scroll(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            if event.button == 4:  # Scroll up
+                self.log_scroll = max(0, self.log_scroll - 1)
+            elif event.button == 5:  # Scroll down
+                max_lines = (self.b_height + 100) // self.line_height
+                self.log_scroll = min(len(self.logs) - max_lines, self.log_scroll + 1)
+
+
         
     def draw_char_info (self):
-        header_height = 500
-        header_width = self.panel_width - 20
-        header_x = 40 * self.tile_size + 10
-        header_y = 80
-        header_rect = pygame.Rect(header_x, header_y, header_width, header_height)
-        
-        # Białe tło paska i ramka
-        pygame.draw.rect(self.screen, self.white, header_rect)  
-        pygame.draw.rect(self.screen, self.black, header_rect, 2)  # Ramka wokół paska
-        
-        turn_font = pygame.font.Font(None, 24)
-        
-        RACE = " ".join(["Race:", str(self.character.race)])
-        CLASS = " ".join(["Class:", str(self.character.class_name)])
-        LEVEL = " ".join(["Level:", str(self.character.level)])
-        ABIL = "Abilities: " + "/".join(str(value) for value in self.character.abilities.values())
-        HP = " ".join(["HitPoints:", str(self.character.instance_hp.current_hp), "/", str(self.character.instance_hp.base_hp)])
-        BLANK = ""
-        MOVE_POINTS = " ".join(["Move points:", str(self.character.c_move_points)])
-        ACTIONS = " ".join(["Actions:", str(self.character.c_actions)])
-        
-        all_text_lines = [RACE, CLASS, LEVEL, ABIL, HP, BLANK, MOVE_POINTS, ACTIONS ]
+        try:
+            self.char_height = 400
+            
+            self.y_i3 = self.y_i2+self.turn_height+10
+            
+            header_rect = pygame.Rect(self.x_i2, self.y_i3, self.ins_panel_w, self.char_height)
+            
+            # Białe tło paska i ramka
+            pygame.draw.rect(self.screen, self.white, header_rect)  
+            pygame.draw.rect(self.screen, self.black, header_rect, 2)  # Ramka wokół paska
+            
+            turn_font = pygame.font.Font(None, 24)
+            
+            RACE = " ".join(["Race:", str(self.character.race)])
+            CLASS = " ".join(["Class:", str(self.character.class_name)])
+            LEVEL = " ".join(["Level:", str(self.character.level)])
+            ABIL = "Abilities: " + "/".join(str(value) for value in self.character.abilities.values())
+            HP = " ".join(["HitPoints:", str(self.character.instance_hp.current_hp), "/", str(self.character.instance_hp.base_hp)])
+            BLANK = ""
+            MOVE_POINTS = " ".join(["Pgame points:", str(self.character.c_move_points)])
+            ACTIONS = " ".join(["Actions:", str(self.character.c_actions)])
+            
+            all_text_lines = [RACE, CLASS, LEVEL, ABIL, HP, BLANK, MOVE_POINTS, ACTIONS ]
 
-        y_offset = header_rect.top + 45
+            y_offset = header_rect.top + 45
+            
+            for line in all_text_lines:
+                turn_text = turn_font.render(line, True, self.black)
+                turn_text_rect = turn_text.get_rect(topleft=(header_rect.left + 10, y_offset))
+                self.screen.blit(turn_text, turn_text_rect)
+                y_offset += turn_text.get_height() + 5  # Przesunięcie o wysokość linii + odstęp
+        except:
+            ...
         
-        for line in all_text_lines:
-            turn_text = turn_font.render(line, True, self.black)
-            turn_text_rect = turn_text.get_rect(topleft=(header_rect.left + 10, y_offset))
-            self.screen.blit(turn_text, turn_text_rect)
-            y_offset += turn_text.get_height() + 5  # Przesunięcie o wysokość linii + odstęp
-        
-
     def draw_turn_info(self):
-        
-        self.draw_char_info()
-        
-        # Rysowanie paska z nazwą postaci na górze z ramką
-        header_height = 60
-        header_width = self.panel_width - 20  # Szerokość mniejsza, aby dać trochę miejsca
-        header_x = 40 * self.tile_size + 10
-        header_y = 10
-        header_rect = pygame.Rect(header_x, header_y, header_width, header_height)
-        
-        # Białe tło paska i ramka
-        pygame.draw.rect(self.screen, self.white, header_rect)  
-        pygame.draw.rect(self.screen, self.black, header_rect, 2)  # Ramka wokół paska
+        try:
+            self.draw_char_info()
+            
+            # Rysowanie paska z nazwą postaci na górze z ramką
+            self.turn_height = 60
+            self.ins_panel_w = self.panel_width - 20
+            
+            self.x_i2 = self.x_i+8
+            self.y_i2 = self.y_i+10
+            
+            header_rect = pygame.Rect(self.x_i2, self.y_i2, self.ins_panel_w, self.turn_height)
+            
+            # Białe tło paska i ramka
+            pygame.draw.rect(self.screen, self.white, header_rect)  
+            pygame.draw.rect(self.screen, self.black, header_rect, 2)  # Ramka wokół paska
 
-        # Nazwa postaci (większa czcionka)
-        name_font = pygame.font.Font(None, 32)
-        name_text = name_font.render(self.character.name, True, self.black)
-        name_text_rect = name_text.get_rect(center=(header_rect.centerx, header_rect.top + 20))
-        self.screen.blit(name_text, name_text_rect)
-        
-        # Tekst "turn" (mniejsza czcionka)
-        turn_font = pygame.font.Font(None, 24)
-        turn_text = turn_font.render("turn", True, self.black)
-        turn_text_rect = turn_text.get_rect(center=(header_rect.centerx, header_rect.top + 45))
-        self.screen.blit(turn_text, turn_text_rect)
+            # Nazwa postaci (większa czcionka)
+            name_font = pygame.font.Font(None, 32)
+            name_text = name_font.render(self.character.name, True, self.black)
+            name_text_rect = name_text.get_rect(center=(header_rect.centerx, header_rect.top + 20))
+            self.screen.blit(name_text, name_text_rect)
+            
+            # Tekst "turn" (mniejsza czcionka)
+            turn_font = pygame.font.Font(None, 24)
+            turn_text = turn_font.render("turn", True, self.black)
+            turn_text_rect = turn_text.get_rect(center=(header_rect.centerx, header_rect.top + 45))
+            self.screen.blit(turn_text, turn_text_rect)
+        except:
+            ...
     
-    def draw_end_turn_button(self, panel_width):
-        button_height = 100
-        button_width = self.panel_width - 20
-        button_x = 40 * self.tile_size + (panel_width - button_width) // 2  # Środek panelu
-        button_y = 40 * self.tile_size - button_height - 10  # 10 pikseli od dolnej krawędzi
-        button_rect = pygame.Rect(button_x, button_y, button_width, button_height)
+    def draw_end_turn_button(self):
+        
+        self.end_height = 100
+        self.y_i10 = self.y_i+self.b_height-110
+        
+        button_rect = pygame.Rect(self.x_i2, self.y_i10, self.ins_panel_w, self.end_height)
         
         pygame.draw.rect(self.screen, self.white, button_rect)  # Białe tło przycisku
         pygame.draw.rect(self.screen, self.black, button_rect, 2)  # Ramka przycisku
@@ -2301,13 +2411,14 @@ class Move:
 
     def handle_right_click(self, pos):
         # Pobieranie pozycji myszy na planszy
-        grid_x = pos[0] // self.tile_size
-        grid_y = pos[1] // self.tile_size
-        pos_board = (grid_x, grid_y)
+        if self.offset_x <= pos[0] < self.b_width+self.offset_x and self.offset_y <= pos[1] < self.b_height+self.offset_y:
+            grid_x = (pos[0]-self.offset_x) // self.tile_size
+            grid_y = (pos[1]-self.offset_y) // self.tile_size
+            pos_board = (grid_x, grid_y)
         
         # Uruchomienie obliczania kosztu w osobnym wątku
-        thread = threading.Thread(target=self.calculate_cost, args=(pos_board, pos))
-        thread.start()
+            thread = threading.Thread(target=self.calculate_cost, args=(pos_board, pos))
+            thread.start()
 
     def calculate_cost(self, pos_board, pos):
         if self.character_manager.instance_algorithms.is_char(pos_board):
@@ -2316,7 +2427,7 @@ class Move:
             cost = str(self.character_manager.instance_event_manager.check_move(self.character, pos_board))
 
         # Przechowuj tekst popupu i pozycję
-        self.current_popup_text = f"Move pts: {cost}"
+        self.current_popup_text = f"Pgame pts: {cost}"
         self.current_popup_pos = pos  # Zapisujemy aktualną pozycję myszy
         
         # Wyświetlenie popupu tylko raz
@@ -2351,12 +2462,23 @@ class Move:
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
                     pos = event.pos
                     self.handle_right_click(pos)
-
+                    
+                # elif event.type == pygame.MOUSEWHEEL:  # Scroll event
+                #     if event.dict['y'] > 0:  # Scroll up
+                #         if self.log_scroll > 0:
+                #             self.log_scroll -= 1  # Przesuń logi o 1 linijkę w górę
+                #             self.draw_info()  # Odśwież info box
+                # elif event.dict['y'] < 0:  # Scroll down
+                #     max_scroll = max(0, len(self.logs) - (self.b_height // self.line_height))
+                #     if self.log_scroll < max_scroll:
+                #         self.log_scroll += 1  # Przesuń logi o 1 linijkę w dół
+                #         self.draw_info()  # Odśwież info box
+                
                 # detecting left mouse click
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     pos = event.pos
-                    x, y = pos[0] // self.tile_size, pos[1] // self.tile_size
-                    if event.button == 1 and 0 <= x < 40 and 0 <= y < 40: 
+                    x, y = (pos[0]-self.offset_x) // self.tile_size, (pos[1]-self.offset_y) // self.tile_size
+                    if event.button == 1 and 0 <= x < self.BS and 0 <= y < self.BS: 
                         click_pos = (x, y)
                         
                         cond = self.character_manager.instance_player.interpret(character, click_pos)
@@ -2381,6 +2503,8 @@ class Move:
                             self.current_popup_text = ""  # Usunięcie tekstu popupu
 
                     last_pos = pos
+                
+                self.handle_log_scroll(event)
 
             # Rysowanie planszy i interfejsu
             self.draw_board()
