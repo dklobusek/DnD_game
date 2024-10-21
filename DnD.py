@@ -19,6 +19,7 @@ class Data:
     
     def __init__ (self):
         # if not hasattr(self, 'data_loaded'):  # Check if data is already loaded
+        self.base_dir = os.path.dirname(os.path.abspath(__file__))
         self.load_all_data()
     
     def load_all_data(self):
@@ -27,6 +28,7 @@ class Data:
         self.classes = self.load_classes()
         self.armors = self.load_armors()
         self.weapons = self.load_weapons()
+        self.fighter = self.load_fighter()
         self.data_loaded = True  # Mark that data has been loaded
         
     def reload_data(self):
@@ -35,7 +37,8 @@ class Data:
         self.load_all_data()
 
     def load_races(self):
-        data = pd.read_csv('DnD/race.csv', delimiter=";")
+        file_path = os.path.join(self.base_dir, 'DnD', 'race.csv')
+        data = pd.read_csv(file_path, delimiter=";")
         races = {}
         for _,row in data.iterrows():
             race_name = row["race"]
@@ -44,7 +47,8 @@ class Data:
         return races
     
     def load_armors(self):
-        data = pd.read_csv('DnD/armors.csv', delimiter=";")
+        file_path = os.path.join(self.base_dir, 'DnD', 'armors.csv')
+        data = pd.read_csv(file_path, delimiter=";")
         data_dict = {}
         for _,row in data.iterrows():
             data_header = row["armor"]
@@ -53,7 +57,8 @@ class Data:
         return data_dict
     
     def load_weapons(self):
-        data = pd.read_csv('DnD/weapons.csv', delimiter=";")
+        file_path = os.path.join(self.base_dir, 'DnD', 'weapons.csv')
+        data = pd.read_csv(file_path, delimiter=";")
         data_dict = {}
         for _,row in data.iterrows():
             data_header = row["weapon"]
@@ -62,13 +67,24 @@ class Data:
         return data_dict
     
     def load_classes(self):
-        data = pd.read_csv('DnD/classes.csv', delimiter=";", encoding='ISO-8859-1')
+        file_path = os.path.join(self.base_dir, 'DnD', 'classes.csv')
+        data = pd.read_csv(file_path, delimiter=";", encoding='ISO-8859-1')
         classes = {}
         for _,row in data.iterrows():
             classes_name = row["class"]
             classes_info = {col: row[col] for col in data.columns if col!= "class"}
             classes[classes_name] = classes_info
         return classes
+    
+    def load_fighter(self):
+        file_path = os.path.join(self.base_dir, 'DnD', 'fighter.csv')
+        data = pd.read_csv(file_path, delimiter=";")
+        data_dict = {}
+        for _,row in data.iterrows():
+            data_header = row["level"]
+            data_info = {col: row[col] for col in data.columns if col!= "level"}
+            data_dict[data_header] = data_info
+        return data_dict
     
     def get_races(self):
         return self.races
@@ -90,10 +106,17 @@ class Data:
             self.weapons = Data.load_weapons(self)
         return self.weapons
     
+    def get_fighter(self):
+        if not hasattr(self, 'fighter'):
+            self.weapons = Data.load_fighter(self)
+        return self.fighter
+        
+    
 class Character:
     #generating representation of character
     def __init__ (self, name, race=None, class_name = None, abilities = {}, abil_modifiers = None, hp = None, skills = None, features = None, level = 1, initiative = None):
         #TODO I switch order
+        self.base_dir = os.path.dirname(os.path.abspath(__file__))
         self.data = self.get_data_instance() #done
         
         self.instance_abil = Abilities(self)
@@ -102,6 +125,8 @@ class Character:
         self.instance_armor_class = ArmorClass(self)
         self.instance_equipment = Equipment(self)
         self.instance_modifiers = Modifiers(self)
+        self.instance_features = Features(self)
+        self.instance_skills = Skills(self)
         
         self.name = name
         self.race = race
@@ -119,6 +144,7 @@ class Character:
         
         self.c_actions = None # no of actions furing turn, default
         self.c_move_points = None # move points during turn, default
+        self.c_attacks = None # no of attacks during turn
         
         self.position = set()
         self.team = None # 1 team one, 2 team two
@@ -154,27 +180,31 @@ class Character:
     @classmethod
     def create_new_character(cls,name):
         #creating a character from scratch
-        character = cls(name=name)
-        character.pick_level()
+        
+        character = cls(name=name) # creating an instance
+        character.pick_level() 
         character.race = character.choose_race()
         character.class_name = character.instance_classes.choosing_class()
-        character.abilities = character.instance_abil.gen_abilities()
+        character.abilities = character.instance_abil.gen_abilities() # plus calc modifiers
         character.instance_hp.calc_base_hp()
+        character.choose_behaviour()
+        character.instance_features.get_all()
+        character.instance_features.update_all()
+        
         
         return character
     
     def save_character(self):        
-        folder_path = 'saved'
-        
-        file_path = os.path.join(folder_path, f"{self.name}.pkl")
+        folder = os.path.join(self.base_dir, 'saved')
+        file_path = os.path.join(folder, f"{self.name}.pkl")
         with open(file_path, "wb") as save_file:
             pickle.dump(self, save_file)
         print(f"Character {self.name} saved successfully to {file_path}")
     
     def load_character(self, filename):
-        
-        folder_path = 'saved'
-        file_path = os.path.join(folder_path, filename)
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        folder = os.path.join(base_dir, 'saved')
+        file_path = os.path.join(folder, filename)
         
         with open(file_path, "rb") as load_file:
             loaded_character = pickle.load(load_file)
@@ -209,6 +239,15 @@ class Character:
         roll = rd.randint(1,20)
         self.initiative = roll + self.instance_abil.abil_modifiers["Dexterity"]
         return self.initiative
+    
+    def choose_behaviour (self):
+        list = ["ranged", "melee"]
+        choose = input("Choose default behaviour for AI (ranged / melee): ")
+        
+        if choose in list:
+            self.behaviour = choose
+        else:
+            print("Wrong behaviour")     
     
     def re_calculate(self):
         self.instance_abil.calculate_modifiers()
@@ -494,12 +533,53 @@ class HitPoints:
         
     def decrease_target_hp(self, dmg):
         self.current_hp -= dmg
+
+class Features:
+    def __init__ (self, character):
+        self.character = character
+        self.list = []
         
+        self.extra_atk = None
+    
+    def get_all (self):
+        self.list = []
+        char_class = self.character.class_name.lower()
+        method_name = f"get_{char_class}"
+        c_lvl = self.character.level
+        data = getattr(self.character.data, method_name)()
+        
+        for lvl in range (1, c_lvl+1):
+            level_data = data.get(lvl, {})
+            features = level_data.get("features", "")
+            
+            if features:
+                # Podziel umiejętności po przecinku i usuń ewentualne białe znaki
+                split_features = [feature.strip() for feature in features.split(",")]
+                self.list.extend(split_features)  # Dodajemy każdy element z osobna
+                print(self.list)
+            print(features)
+    
+    def update_ext_attacks(self):
+        # find a "extra attack" feature in class features and count them
+        
+        no = self.list.count("extra attack")
+        self.extra_atk = no+1
+        print(self.extra_atk)
+    
+    def update_all(self):
+        self.update_ext_attacks()
+
+class Skills:
+    def __init__ (self, character):
+        self.character = character
+
 class Modifiers:
     def __init__ (self, character):
         self.character = character
         self.ac_modifiers = None
         self.main_attack_mod = None
+        
+        self.b_prof_bonus = None # basic proficiency bonus resulting from class and level
     
     def update_ac (self, ac):
         self.ac_modifiers = ac
@@ -507,9 +587,29 @@ class Modifiers:
         
     def update_main_attack_mod(self):
         #TODO add multiple bonuses
-        mod = self.character.instance_abil.abil_modifiers["Strength"] # basic attack bonus resulting from strength
-        self.main_attack_mod = mod
+        
+        mod1 = self.get_ability_bonus()
+        mod2 = self.get_basic_prof_bonus()
+        
+        sum = mod1+mod2
+        self.main_attack_mod = sum
+        return sum
+    
+    def get_ability_bonus(self):
+        # TODO - get the proper weapon
+        abil = (self.character.instance_equipment.first_weapon["ability"]).title()
+        mod = self.character.instance_abil.abil_modifiers[abil]
         return mod
+    
+    def get_basic_prof_bonus(self):
+        char_class = self.character.class_name.lower()
+        method_name = f"get_{char_class}"
+        lvl = self.character.level
+        data = getattr(self.character.data, method_name)()
+        
+        prof_bonus = data.get(lvl, {}).get("prof_bonus")
+        self.b_prof_bonus = prof_bonus
+        return prof_bonus
 
 class Equipment:
     #store information about character/enemy equipment and its modifiers, probably the biggest class there will be, or at least class that will draw the biggest amount information from csv file
@@ -775,13 +875,11 @@ class Action:
         # check for hit
         hit, critical = self.check_hit(roll, attack_roll, target)
         
-        c_hit = f" target Hit" if hit else " target missed"
+        c_hit = f" target hit" if hit else " target missed"
         crit = f". Critical Hit!" if critical else ""
         txt = f"{character.name} attacks {target.name}: {roll} + {attack_modifier} = {attack_roll},{c_hit}{crit}"
         self.character_manager.ins_pgame.add_log(txt)
         print(txt)
-        
-        
         
         # calculate damage, check in damage roll function for any immunities/reductions
         if hit:
@@ -846,7 +944,10 @@ class Action:
         
         #TODO check target for any resistance
         
-        print (f"{character.name} hits {target.name} for {dmg_sum}: {dmg} + {dmg_mod+add_mod}")
+        txt = f"{character.name} hits {target.name} for {dmg} + {dmg_mod+add_mod} = {dmg_sum}"
+        self.character_manager.ins_pgame.add_log(txt)
+        print(txt)
+        
         return dmg_sum
                   
 class InitiativeTracker:# TODO, maybe in the future
@@ -921,6 +1022,9 @@ class Player:
         # reset move points to its default state
         character.c_move_points = character.move_points
         character.c_actions = character.actions
+        character.c_attacks = 0 # until chare spend action 
+        
+        # check how many attack char have
         
         # TODO
         self.character_manager.ins_pgame.run_game(character)
@@ -931,10 +1035,15 @@ class Player:
         
         if self.is_char(pos):
             for enemy in self.character_manager.characters.values():
-                if enemy.position == pos and char.c_actions>0:
+                if enemy.position == pos and (char.c_actions>0 or char.c_attacks>0):
                     if self.pick_enemy (char, enemy):
                         self.character_manager.instance_action.main_attack(char, enemy)
-                        char.c_actions -= 1
+                        if char.c_attacks>0:
+                           char.c_attacks -= 1
+                        elif char.c_attacks==0 and char.c_actions>0:
+                            char.c_attacks = char.instance_features.extra_atk
+                            char.c_actions -= 1
+                            char.c_attacks -= 1             
         else:
         # check possibility of movement
             cost = self.character_manager.instance_action.move(char, pos, char.c_move_points)
@@ -1050,7 +1159,7 @@ class Melee_behaviour():
         self.AIclass.update_char_pygame(character)
         
         pygame.display.update()
-        time.sleep (1)
+        time.sleep (0.2)
         
         final_weight = {}
         
@@ -1079,7 +1188,7 @@ class Melee_behaviour():
         target = max(final_weight, key=final_weight.get)
         print(f"Picked target (based on weight) is: {target.name}")
         
-        time.sleep (1)
+        time.sleep (0.2)
         
         while self.actions_pts>0:
             #try to attack target without move
@@ -2300,8 +2409,6 @@ class Pgame:
             elif event.button == 5:  # Scroll down
                 max_lines = (self.b_height + 100) // self.line_height
                 self.log_scroll = min(len(self.logs) - max_lines, self.log_scroll + 1)
-
-
         
     def draw_char_info (self):
         try:
@@ -2323,10 +2430,11 @@ class Pgame:
             ABIL = "Abilities: " + "/".join(str(value) for value in self.character.abilities.values())
             HP = " ".join(["HitPoints:", str(self.character.instance_hp.current_hp), "/", str(self.character.instance_hp.base_hp)])
             BLANK = ""
-            MOVE_POINTS = " ".join(["Pgame points:", str(self.character.c_move_points)])
+            MOVE_POINTS = " ".join(["Move points:", str(self.character.c_move_points)])
             ACTIONS = " ".join(["Actions:", str(self.character.c_actions)])
+            ATTACKS = " ".join(["Attacks:", str(self.character.c_attacks)])
             
-            all_text_lines = [RACE, CLASS, LEVEL, ABIL, HP, BLANK, MOVE_POINTS, ACTIONS ]
+            all_text_lines = [RACE, CLASS, LEVEL, ABIL, HP, BLANK, MOVE_POINTS, ACTIONS, ATTACKS ]
 
             y_offset = header_rect.top + 45
             
@@ -2519,7 +2627,6 @@ class Pgame:
 
         clock.tick(10)
 
-
 os.system('cls')
 
 
@@ -2531,5 +2638,5 @@ pygame.quit()
 
 # y = "Gimli"
 # x = Character(name=y).load_character((y+".pkl"))
-# x.c_actions = None
+# x.instance_features.get_all()
 # x.save_character()

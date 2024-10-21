@@ -1,0 +1,21 @@
+level;prof_bonus;features;second_wind;weapon_mastery;battle_master;champion;eldricht_knight;psi_warrior
+1;2;fighting style, second wind, weapon mastery;2;3;2;;;
+2;2;action surge, tactical mind;2;3;2;;;
+3;2;subclass;2;3;maneuvers, maneuvers, maneuvers, student of war;improved critical, remarkable athlete;spellcasting, war bond;psionic power
+4;2;ability;3;3;2;;;
+5;3;extra attack, tactical shift;3;3;3;;;
+6;3;ability;3;4;3;;;
+7;3;subclass feature;3;4;maneuvers, maneuvers, know your enemy;additional fighting style;war magic;telekinetic adept
+8;3;ability;3;4;3;;;
+9;4;indomitable, tactical master;3;4;4;;;
+10;4;subclass feature;4;5;maneuvers, maneuvers, improved combat superiority;heroic warrior;eldricht strike;guarded mind
+11;4;extra attack;4;5;4;;;
+12;4;ability;4;5;4;;;
+13;5;indomitable;4;5;5;;;
+14;5;ability;4;5;5;;;
+15;5;subclass feature;4;5;maneuvers, maneuvers, relentless;superior critical;arcane charge;bulwark of force
+16;5;ability;4;6;5;;;
+17;6;action surge, indomitable;4;6;6;;;
+18;6;subclass feature;4;6;ultimate combat superiority;survivor;improved war magic;telekinetic master
+19;6;epic boom;4;6;6;;;
+20;6;extra attack;4;6;6;;;
