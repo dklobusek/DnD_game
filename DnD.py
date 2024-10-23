@@ -141,10 +141,12 @@ class Character:
         
         self.actions = 1 # TODO add a method
         self.move_points = 30 # TODO add a method
+        self.aoo = 1 # attack of opportunity
         
         self.c_actions = None # no of actions furing turn, default
         self.c_move_points = None # move points during turn, default
         self.c_attacks = None # no of attacks during turn
+        self.c_aoo = None # attack of opportunity
         
         self.position = set()
         self.team = None # 1 team one, 2 team two
@@ -723,7 +725,7 @@ class Action:
          
     def move(self, char, pos, mv_pts):
         # method for player move
-        
+        old_pos = char.position
         cost = self.character_manager.instance_event_manager.check_move(char, pos)
         
         if mv_pts>=cost:
@@ -731,6 +733,7 @@ class Action:
             for obj in self.character_manager.characters.values():
                 if obj.position == pos:
                     return False
+            self.character_manager.instance_action.attack_of_opportunity(char, old_pos, pos)
             self.character_manager.instance_board.update_player_position(char, pos)
             return cost
             
@@ -952,6 +955,25 @@ class Action:
     def spend_move_pts(self,c):
         cost = self.character_manager.instance_AI.pass_cost
         c.c_move_points -= cost
+    
+    def attack_of_opportunity(self, c, old_pos, new_pos):
+
+        opposing_team = (self.character_manager.instance_event_manager.team_two if c.team == 1 else self.character_manager.instance_event_manager.team_one)
+        
+        for e in opposing_team:
+            if e.c_aoo>0:
+                if self.character_manager.instance_algorithms.check_weapon_reach(e) == 5:
+                    if self.character_manager.instance_algorithms.is_adjacent(e.position, old_pos):
+                        if not self.character_manager.instance_algorithms.is_adjacent(e.position, new_pos):
+                            txt = f"Attack of opportunity! {e.name} attacks {c.name}"
+                            self.character_manager.ins_pgame.add_log (txt)
+                            self.main_attack(e,c)
+                if self.character_manager.instance_algorithms.check_weapon_reach(e) == 10:
+                    if self.character_manager.instance_algorithms.is_adjacent_10(e.position, old_pos):
+                        if not self.character_manager.instance_algorithms.is_adjacent(e.position, new_pos):
+                            txt = f"Attack of opportunity! {e.name} attacks {c.name}"
+                            self.character_manager.instance_pgame.add_log (txt)
+                            self.main_attack(e,c)     
                   
 class InitiativeTracker:# TODO, maybe in the future
     def __init__ (self):
@@ -1224,7 +1246,7 @@ class AI:
         
         c.c_move_points = c.move_points
         c.c_actions = c.actions
-        c.c_attacks = 0 # until char spend action 
+        c.c_attacks = 0 # until char spend action
         print(f"DEBUG: mvpts/actions/attacks: {c.c_move_points} {c.c_actions} {c.c_attacks}")
         
         self.con = self.character_manager.instance_conditions
@@ -1380,13 +1402,17 @@ class EventManager:
         # board and move variables
         self.path_queue = {}
         self.visited = {}
-        
+    
+    def aoo_manage (self):
+        for c in self.character_manager.characters:
+            c.c_aoo = c.aoo
         
     def is_adjacent (self, pos, target):
-        #check if pos is adjacent to target
+        #check if pos is adjacent to target, 5 feet, 8 tiles
         x, y = pos
         tx, ty = target
         return abs(x - tx) <= 1 and abs(y - ty) <= 1 and pos != target
+
         
     def distance (self, pos, target):
         x1,y1 = pos
@@ -1754,6 +1780,8 @@ class EventManager:
         while no_team_one > 0 and no_team_two > 0: 
             
             print(f"\n\n>>>>>> ROUND {round} <<<<<<")
+            #reset state of aoo attacks
+            self.aoo_manage
             no_of_char = len(self.character_manager.characters)
             self.turn_index = 0
             
@@ -2049,6 +2077,15 @@ class Algorithms():
         x, y = pos
         tx, ty = target
         return abs(x - tx) <= 1 and abs(y - ty) <= 1 and pos != target
+    
+    def is_adjacent_10 (self, pos, target):
+        #check if pos is adjacent to target, 10 feet, 24 tiles
+        x, y = pos
+        tx, ty = target
+        distance_x = abs(x - tx)
+        distance_y = abs(y - ty)
+
+        return 1 <= distance_x <= 2 and 1 <= distance_y <= 2 or (distance_x <= 2 and distance_y <= 2 and pos != target)
         
     def distance (self, pos, target):
         x1,y1 = pos
@@ -2269,11 +2306,18 @@ class Algorithms():
         mv_pts = c.c_move_points
         
         print(f"DEBUG: target: {t.name}, mvpoints: {mv_pts}, char: {c.name} ")
+        old_pos = c.position
         
-        pos, pts_cost = self.character_manager.instance_event_manager.AI_check_move(c, t.position, mv_pts, False)
-        self.character_manager.instance_board.update_player_position(c, pos)
+        new_pos, pts_cost = self.character_manager.instance_event_manager.AI_check_move(c, t.position, mv_pts, False)
+        self.character_manager.instance_action.attack_of_opportunity(c, old_pos, new_pos)
+        
+        self.character_manager.instance_board.update_player_position(c, new_pos)
         self.character_manager.instance_AI.pass_cost = pts_cost
         return pts_cost
+    
+    def check_weapon_reach(self, c):
+        reach = c.instance_equipment.first_weapon["reach"]
+        return reach if reach in [5,10] else False
 
 
 class MainMenu:
@@ -2777,5 +2821,5 @@ pygame.quit()
 
 # y = "Orc"
 # x = Character(name=y).load_character((y+".pkl"))
-# x.actions = 1
+# x.c_aoo = 1
 # x.save_character()
