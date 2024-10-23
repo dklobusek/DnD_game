@@ -10,3 +10,4 @@ v1.0
 3. GUI for playing game
 4. Method for creating/equipping characters
 5. Move/Attack etc. methods implemented compliant with DnD 5.5 rules
+6. A* algorithm with mods implemented for moving across the board/calculating move points

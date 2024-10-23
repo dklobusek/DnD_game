@@ -703,31 +703,6 @@ class Action:
                 break
             else:
                 print ("Action not recognized. Type 'pass' to skip.")
-        
-        # # Split input into action and target (if target exists)
-        # parts = action_input.split(maxsplit=1)
-        # command = parts[0]
-        # target = (parts[1] if len(parts) > 1 else None).title()  # target is the second word, if present
-        
-        # # Normalize the list items by converting them to lowercase and replacing spaces with underscores
-        # actions_mapping = {action.lower().replace(" ", "_"): action for action in actions_list}
-        
-        # # Search for a partial match in the input command
-        # for normalized_action, original_action in actions_mapping.items():
-        #     if command in normalized_action:
-        #         if "attack" in normalized_action and target:
-        #             #check for valid enemy
-        #             return target
-                
-        #         # if not attack
-        #         action_method = getattr(self, normalized_action, None)
-        #         if action_method:
-        #             action_method(character)
-        #         else:
-        #             print(f"Action '{original_action}' is not yet implemented.")
-        #         return  # Exit after the first match
-
-        # print("Action not recognized. Please try again.")
 
     def get_possible_actions(self, character):
         
@@ -853,7 +828,11 @@ class Action:
         # return additional modifiers to the attack roll TODO
         return 0
     
-    def main_attack (self, character, target):
+    def main_attack (self, character, target=None):
+        # get target if AI/None
+        if not target:
+            target = self.character_manager.instance_AI.target
+        
         # get instance object if str
         if isinstance(target, str):
             target = self.character_manager.get_character(target)
@@ -949,6 +928,30 @@ class Action:
         print(txt)
         
         return dmg_sum
+    
+    def dash(self, c):
+        if c.c_actions>0:
+            c.c_actions -= 1
+            c.c_move_points *= 2 
+            return True
+        else: return False
+        
+    def spend_action_points(self,c):
+        ...
+    def spend_attacks_points(self,c):
+        print(f"DEBUG: attacks: {c.c_attacks} actions: {c.c_actions}")
+        if c.c_attacks==0 and c.c_actions>0:
+            c.c_actions -= 1
+            c.c_attacks = c.instance_features.extra_atk - 1
+        elif c.c_attacks>0:
+            c.c_attacks -= 1
+        else:
+            print(c.c_attacks, c.c_actions )
+            raise AttributeError ("No attacks or actions")
+        
+    def spend_move_pts(self,c):
+        cost = self.character_manager.instance_AI.pass_cost
+        c.c_move_points -= cost
                   
 class InitiativeTracker:# TODO, maybe in the future
     def __init__ (self):
@@ -966,11 +969,12 @@ class InitiativeTracker:# TODO, maybe in the future
 class CharacterManager:
     def __init__ (self):
         self.instance_action = Action(self)
+        self.instance_algorithms = Algorithms(self)
+        self.instance_conditions = Conditions(self)
         self.instance_event_manager = EventManager(self)
         self.instance_AI = AI(self)
         self.instance_player = Player(self)
         self.instance_board = Board(self)
-        self.instance_algorithms = Algorithms(self)
         
         self.event_queue = queue.Queue()
         self.ins_pgame = Pgame(self, self.event_queue)
@@ -1071,76 +1075,223 @@ class Player:
         else:
             return False
 
+class Node:
+    def __init__(self, children = None):
+        self.children = children if children else []
+    
+    def add_child(self, child):
+        self.children.append(child)
+    
+    def run():
+        pass
+
+class Selector(Node):
+    def run(self):
+        for child in self.children:
+            if child.run():
+                return True
+        return False
+    
+class Sequence(Node):
+    def run(self):
+        for child in self.children:
+            if not child.run():
+                return False
+        return True
+
+class ConditionNode(Node):
+    def __init__(self, condition_fn, *args):
+        self.condition_fn = condition_fn
+        self.args = args
+    
+    def run(self):
+        # Wywołujemy condition_fn z argumentami
+        result = self.condition_fn(*self.args)
+        print(f"Condition {self.condition_fn.__name__} returned {result}")
+        return result
+    
+class ActionNode(Node):
+    def __init__(self, action_fn, *args):
+        self.action_fn = action_fn
+        self.args = args
+
+    def run(self):
+        self.action_fn(*self.args)
+        print(f"Action {self.action_fn.__name__} executed.")
+        return True
+         
+class Conditions:
+    def __init__ (self, character_manager):
+        self.character_manager = character_manager
+    
+    def surr_safe(self,c):
+    # TODO implement a full method that is mutually exclusive with two other
+        return True     
+    
+    def surr_threaten(self,c):
+        # TODO implement a full method that is mutually exclusive with two other
+        return False
+    
+    def surr_danger(self,c):
+        # TODO implement a full method that is mutually exclusive with two other
+        return False 
+    
+    def melee(self,c):
+        return True if c.behaviour == "melee" else False
+    
+    def ranged(self,c):
+         return True if c.behaviour == "ranged" else False
+    
+    def pick_target(self, c):
+        
+        # TODO think if this function needs to return False at some point
+        print("pick target function")
+        final_weight = {}
+        self.alg = self.character_manager.instance_algorithms
+        
+        opposing_team = (self.character_manager.instance_event_manager.team_two if c.team == 1 else self.character_manager.instance_event_manager.team_one)
+        
+        if not opposing_team: return False
+        
+        hp_dict = self.alg.check_hp (opposing_team) # check HP score
+        ac_dict = self.alg.check_ac (opposing_team) # check AC score
+        dis_dict = self.alg.check_dist (opposing_team, c) # check cost move to target from char position
+        threat_dict = self.alg.check_threat (opposing_team) # check threat level
+        
+        # print(f"DEBUG: HP: { {character.name: score for character, score in hp_dict.items()} } AC: { {character.name: score for character, score in ac_dict.items()} } distance: { {character.name: score for character, score in dis_dict.items()} } threat: { {character.name: score for character, score in threat_dict.items()} }")
+        
+        for enemy in hp_dict.keys():
+            hp_score = hp_dict[enemy] * 0.30
+            ac_score = ac_dict[enemy] * 0.10
+            threat_score = threat_dict[enemy] * 0.25
+            dis_score = dis_dict[enemy] * 0.35
+
+            total_score = (hp_score + ac_score + threat_score + dis_score) / 4
+
+            final_weight[enemy] = total_score
+
+        target = max(final_weight, key=final_weight.get)
+        print(f"Picked target (based on weight) is: {target.name}")
+        
+        # update target information in AI class, from what other function can draw
+        self.character_manager.instance_AI.target = target
+        return True
+    
+    def have_actions_or_attacks(self,c):
+        return True if c.c_actions>0 or c.c_attacks>0 else False
+    
+    def target_adj(self,c):
+        t = self.character_manager.instance_AI.target
+        tpos = t.position
+        cpos = c.position
+        x, y = cpos
+        tx, ty = tpos
+        return abs(x - tx) <= 1 and abs(y - ty) <= 1 and cpos != tpos
+    
+    def target_in_sight(self,c):
+        # can move within actual mv_points
+        t = self.character_manager.instance_AI.target
+        mv = c.c_move_points
+        cost = self.character_manager.instance_algorithms.check_target_cost (c, t.position)
+        
+        return True if mv>=cost else False
+
+    def target_outof_sight(self,c):
+        # can move within actual mv_points
+        t = self.character_manager.instance_AI.target
+        mv = c.c_move_points
+        cost = self.character_manager.instance_algorithms.check_target_cost (c, t.position)
+        
+        return True if mv<=cost else False
+    
+    def have_mv_pts(self,c):
+        return True if c.c_move_points>4 else False
+
+
 class AI:
     def __init__ (self, character_manager):
         self.character_manager = character_manager
-        self.behaviours = {
-            "ranged": Ranged_behaviour(self),
-            "melee": Melee_behaviour(self)
-        }
-    
-    def AI_turn (self, character):
-        print(f"\nAI {character.name} move")
+        
+        self.target = None
+        self.pass_cost = 0
 
-        self.behaviours.get(character.behaviour).begin(character)
-        
-        # #check if char can attack from distance
-        # target = self.character_manager.instance_action.choose_ranged_target (character)
-        # if target:
-        #     self.character_manager.instance_action.main_attack (character, target)
-        #     action = False
     
-        # #check if targets can be attacked by AI
-        # targets = self.character_manager.instance_action.get_targets(character)
+    def AI_turn (self, c):
+        print(f"\nAI {c.name} move")
         
-        # #check if targets can be attacked
-        # if not targets:
-        #     print(f"DEBUG: AI moving!")
-        #     self.move_AI(character)
+        self.update_char_pygame (c)
+        time.sleep(0.5)
+        
+        c.c_move_points = c.move_points
+        c.c_actions = c.actions
+        c.c_attacks = 0 # until char spend action 
+        print(f"DEBUG: mvpts/actions/attacks: {c.c_move_points} {c.c_actions} {c.c_attacks}")
+        
+        self.con = self.character_manager.instance_conditions
+        self.act = self.character_manager.instance_action
+        self.alg = self.character_manager.instance_algorithms
+        
+        self.target = None  
+        
+        bt =  Selector([
+                Sequence([ # safe conditions
+                    ConditionNode(self.con.surr_safe, c),
+                    Selector([
+                        Sequence([ # melee behaviour
+                            ConditionNode(self.con.melee, c),
+                            ConditionNode(self.con.pick_target, c),
+                            Selector([
+                                Sequence([ # enemy is near
+                                    ConditionNode(self.con.target_adj,c),
+                                    self.main_attack_bh(c),
+                                    ]),
+                                Sequence([ # enemy is within standard move points
+                                    ConditionNode(self.con.target_in_sight,c), 
+                                    ConditionNode(self.con.have_actions_or_attacks, c),
+                                    ConditionNode(self.con.have_mv_pts, c),
+                                    ActionNode(self.alg.AI_move, c),
+                                    ActionNode(self.act.spend_move_pts, c),
+                                    self.main_attack_bh(c)
+                                    ]),
+                                Sequence([ # enemy is within dash move points
+                                    ConditionNode(self.con.have_mv_pts, c),
+                                    ConditionNode(self.con.target_outof_sight,c), 
+                                    ActionNode(self.act.dash, c),
+                                    ActionNode(self.alg.AI_move, c),
+                                    ActionNode(self.act.spend_move_pts, c),
+                                    ConditionNode(self.con.target_adj,c),
+                                    self.main_attack_bh(c)
+                                    ])
+                                ])
+                            ]),
+                        Sequence([ # ranged behaviour
+                                ConditionNode(self.con.ranged, c),
+                                ConditionNode(self.con.pick_target, c),
+                                ActionNode(self.act.main_attack, c)
+                                ])      
+                            ]),
+                        ]),
+                Sequence([ # TODO threat conditions
+                    ConditionNode(self.con.surr_threaten, c),
+                    ActionNode(self.con.pick_target, c)
+                    ]),
+                Sequence([ # TODO danger conditions
+                    ConditionNode(self.con.surr_danger, c),
+                    ActionNode(self.con.pick_target, c)
+                    ])
+            ])
+        
+        while bt.run():
+            time.sleep(0.5)
+            ...
 
-        # if targets:
-        #     target = self.AI_choose_enemy(targets)
-        #     print(f"DEBUG: AI attacking!")
-        #     self.character_manager.instance_action.main_attack(character, target)
-
-    def AI_choose_enemy (self, targets):
-        # choose closes target
-        val = float('inf')
-        for target in targets:
-            path = self.character_manager.instance_algorithms.calc_pts_alongtheway (character.position, target.position)
-            if len(path)<val:
-                best_target = target
-                
-        return best_target
+    def main_attack_bh(self, c):
+        return Sequence([
+                    ConditionNode(self.con.have_actions_or_attacks, c),
+                    ActionNode(self.act.main_attack, c),
+                    ActionNode(self.act.spend_attacks_points, c)
+                    ])
         
-    def AI_pick_target_to_go(self, character):
-        # choosing enemy from self list, random choice, cannot be attacked
-        targets = []
-        
-        if character.team == 1:
-            for target in self.character_manager.instance_event_manager.team_two:
-                targets.append(target)
-        if character.team == 2:
-            for target in self.character_manager.instance_event_manager.team_one:
-                targets.append(target)
-        
-        # choose closes target
-        val = float('inf')
-        for target in targets:
-            path = self.character_manager.instance_algorithms.calc_pts_alongtheway (character.position, target.position)
-            if len(path)<val:
-                best_target = target
-        
-        # choose_target = rd.choice(list)
-        return best_target
-    
-    def move_AI(self, character, target, mv_pts):
-        # move towards target
-        
-        pos, pts_cost = self.character_manager.instance_event_manager.AI_check_move(character, target.position, mv_pts, False)
-        self.character_manager.instance_board.update_player_position(character, pos)
-        
-        return pts_cost
     
     def update_char_pygame (self, char):
         #update pygame info from behaviour classes
@@ -1150,45 +1301,22 @@ class AI:
 class Melee_behaviour():
     def __init__ (self, AIclass):
         self.AIclass = AIclass
-        self.mv_pts = None
-        self.actions_pts = None
         
     def begin(self, character):
         print(f"\n>>> {character.name} turn <<<\n")
+        
         #update pygame info
         self.AIclass.update_char_pygame(character)
+        
+        character.c_move_points = character.move_points
+        character.c_actions = character.actions
+        character.c_attacks = 0 # until chare spend action 
         
         pygame.display.update()
         time.sleep (0.2)
         
-        final_weight = {}
+        # decision tree
         
-        self.mv_pts = character.move_points
-        self.actions_pts = character.actions
-        
-        opposing_team = (self.AIclass.character_manager.instance_event_manager.team_two if character.team == 1 else self.AIclass.character_manager.instance_event_manager.team_one)
-
-        hp_dict = self.check_hp (opposing_team) # check HP score
-        ac_dict = self.check_ac (opposing_team) # check AC score
-        dis_dict = self.check_dist (opposing_team, character) # check cost move to target from char position
-        threat_dict = self.check_threat (opposing_team) # check threat level
-        
-        print(f"DEBUG: HP: { {character.name: score for character, score in hp_dict.items()} } AC: { {character.name: score for character, score in ac_dict.items()} } distance: { {character.name: score for character, score in dis_dict.items()} } threat: { {character.name: score for character, score in threat_dict.items()} }")
-        
-        for enemy in hp_dict.keys():
-            hp_score = hp_dict[enemy] * 0.30
-            ac_score = ac_dict[enemy] * 0.10
-            threat_score = threat_dict[enemy] * 0.25
-            dis_score = dis_dict[enemy] * 0.35
-            
-            total_score = (hp_score + ac_score + threat_score + dis_score) / 4
-            
-            final_weight[enemy] = total_score
-        
-        target = max(final_weight, key=final_weight.get)
-        print(f"Picked target (based on weight) is: {target.name}")
-        
-        time.sleep (0.2)
         
         while self.actions_pts>0:
             #try to attack target without move
@@ -1203,11 +1331,10 @@ class Melee_behaviour():
             print (f"Distance to target is: {dist} : {character.name} to {target.name}")
             
             # if the target is within move distance: move&attack
-            print(f"Check conditions: mv_pts: {self.mv_pts} distance: {dist}")
-            if self.mv_pts>=dist:
-                print("Moving to target within move limit and attack")
-                cost = self.AIclass.move_AI (character, target, self.mv_pts)
-                self.mv_pts -= cost
+
+            if character.c_move_points>=dist:
+                cost = self.AIclass.move_AI (character, target, character.c_move_points)
+                character.c_move_points -= cost
                 self.AIclass.character_manager.instance_action.main_attack (character, target)
                 self.actions_pts -= 1
                 break
@@ -1222,96 +1349,7 @@ class Melee_behaviour():
                 self.actions_pts -= 1
                 break
             
-        print (f"End of turn info: mov points: {self.mv_pts}, action pts: {self.actions_pts}")
-
-    def check_hp (self, e_team):
-        score_dict = {}
-        for enemy in e_team:
-            c_hp = enemy.instance_hp.current_hp
-            m_hp = enemy.instance_hp.base_hp
-            ratio = c_hp / m_hp
-            score = 100 - (ratio * 100)
-            score_dict[enemy] = score
-
-        return score_dict
-
-    def check_ac(self, e_team):
-        score_dict = {}
-
-        ac_min = min(enemy.instance_armor_class.armor_class for enemy in e_team)
-        ac_max = max(enemy.instance_armor_class.armor_class for enemy in e_team)
-
-        for enemy in e_team:
-            ac = enemy.instance_armor_class.armor_class
-            # Unikamy dzielenia przez zero, gdy wszyscy mają ten sam AC
-            if ac_max == ac_min:
-                score = 100  # Jeśli wszyscy mają ten sam AC, wszyscy są "łatwym" celem
-            else:
-                score = (1 - (ac - ac_min) / (ac_max - ac_min)) * 100  # Odwracamy skalowanie, aby mniejsze AC dawało większy wynik
-            score_dict[enemy] = max(0, min(score, 100))  # upewniamy się, że wartości są w zakresie 0-100
-
-        return score_dict
-
-    def check_threat(self, e_team):
-        
-        ac_min = min(enemy.instance_armor_class.armor_class for enemy in e_team)
-        ac_max = max(enemy.instance_armor_class.armor_class for enemy in e_team)
-        
-        lvl_min = min(enemy.level for enemy in e_team)
-        lvl_max = max(enemy.level for enemy in e_team)
-        
-        hp_min = min(enemy.instance_hp.current_hp for enemy in e_team)
-        hp_max = max(enemy.instance_hp.current_hp for enemy in e_team)
-        
-        score_dict = {}
-        
-        for enemy in e_team:
-            hp = enemy.instance_hp.current_hp
-            if hp_max == hp_min:
-                score_1 = 0 if hp == hp_min else 100
-            else:
-                score_1 = ((hp - hp_min) / (hp_max - hp_min)) * 100
-
-            ac = enemy.instance_armor_class.armor_class
-            if ac_max == ac_min:
-                score_2 = 0 if ac == ac_min else 100
-            else:
-                score_2 = ((ac - ac_min) / (ac_max - ac_min)) * 100
-            
-            lvl = enemy.level  
-            if lvl_max == lvl_min:
-                score_3 = 0 if lvl == lvl_min else 100
-            else:
-                score_3 = ((lvl - lvl_min) / (lvl_max - lvl_min)) * 100
-            
-            # TODO add another methods, like spellcasters, damage etc.
-            
-            score_sum = (score_1+score_2+score_3) / 3
-            
-            score_dict[enemy] = score_sum
-        
-        return score_dict
-    
-    def check_dist (self, e_team, char):
-        
-        score_dict = {}
-        move_dict = {}
-        
-        for enemy in e_team:
-            move_pts = self.AIclass.character_manager.instance_algorithms.check_target_cost (char, enemy.position)
-            move_dict[enemy] = move_pts
-        
-        m_pts = char.move_points 
-    
-        for enemy, move_pts in move_dict.items():
-            if move_pts <= m_pts:
-                score_dict[enemy] = 100
-            elif m_pts < move_pts <= m_pts * 2:
-                score_dict[enemy] = 40
-            else:
-                score_dict[enemy] = 0
-
-        return score_dict    
+        print (f"End of turn info: mov points: {self.mv_pts}, action pts: {self.actions_pts}") 
         
 class Ranged_behaviour():
     def __init__ (self, AIclass):
@@ -1344,7 +1382,6 @@ class EventManager:
         self.visited = {}
         
         
-    
     def is_adjacent (self, pos, target):
         #check if pos is adjacent to target
         x, y = pos
@@ -1457,8 +1494,9 @@ class EventManager:
                     self.path_queue[pos] = vals
     
     def AI_check_move(self, character, target_pos, move_points, is_Player = False):
-        
+        print(f"DEBUG: Char {character.position} to target {target_pos} movepoints: {move_points}")
         #initialize variable
+        
         min_pos = None
         adjacent_results = {}
         self.path_queue = {}
@@ -2135,6 +2173,107 @@ class Algorithms():
         print(f" Path found: {sorted_path}")
         
         return sorted_path
+    
+    def check_hp (self, e_team):
+        score_dict = {}
+        for enemy in e_team:
+            c_hp = enemy.instance_hp.current_hp
+            m_hp = enemy.instance_hp.base_hp
+            ratio = c_hp / m_hp
+            score = 100 - (ratio * 100)
+            score_dict[enemy] = score
+
+        return score_dict
+    
+    def check_ac(self, e_team):
+        score_dict = {}
+
+        ac_min = min(enemy.instance_armor_class.armor_class for enemy in e_team)
+        ac_max = max(enemy.instance_armor_class.armor_class for enemy in e_team)
+
+        for enemy in e_team:
+            ac = enemy.instance_armor_class.armor_class
+            # Unikamy dzielenia przez zero, gdy wszyscy mają ten sam AC
+            if ac_max == ac_min:
+                score = 100  # Jeśli wszyscy mają ten sam AC, wszyscy są "łatwym" celem
+            else:
+                score = (1 - (ac - ac_min) / (ac_max - ac_min)) * 100  # Odwracamy skalowanie, aby mniejsze AC dawało większy wynik
+            score_dict[enemy] = max(0, min(score, 100))  # upewniamy się, że wartości są w zakresie 0-100
+
+        return score_dict
+    
+    def check_threat(self, e_team):
+        
+        ac_min = min(enemy.instance_armor_class.armor_class for enemy in e_team)
+        ac_max = max(enemy.instance_armor_class.armor_class for enemy in e_team)
+        
+        lvl_min = min(enemy.level for enemy in e_team)
+        lvl_max = max(enemy.level for enemy in e_team)
+        
+        hp_min = min(enemy.instance_hp.current_hp for enemy in e_team)
+        hp_max = max(enemy.instance_hp.current_hp for enemy in e_team)
+        
+        score_dict = {}
+        
+        for enemy in e_team:
+            hp = enemy.instance_hp.current_hp
+            if hp_max == hp_min:
+                score_1 = 0 if hp == hp_min else 100
+            else:
+                score_1 = ((hp - hp_min) / (hp_max - hp_min)) * 100
+
+            ac = enemy.instance_armor_class.armor_class
+            if ac_max == ac_min:
+                score_2 = 0 if ac == ac_min else 100
+            else:
+                score_2 = ((ac - ac_min) / (ac_max - ac_min)) * 100
+            
+            lvl = enemy.level  
+            if lvl_max == lvl_min:
+                score_3 = 0 if lvl == lvl_min else 100
+            else:
+                score_3 = ((lvl - lvl_min) / (lvl_max - lvl_min)) * 100
+            
+            # TODO add another methods, like spellcasters, damage etc.
+            
+            score_sum = (score_1+score_2+score_3) / 3
+            
+            score_dict[enemy] = score_sum
+        
+        return score_dict
+    
+    def check_dist (self, e_team, char):
+        
+        score_dict = {}
+        move_dict = {}
+        
+        for enemy in e_team:
+            move_pts = self.check_target_cost (char, enemy.position)
+            move_dict[enemy] = move_pts
+        
+        m_pts = char.move_points 
+    
+        for enemy, move_pts in move_dict.items():
+            if move_pts <= m_pts:
+                score_dict[enemy] = 100
+            elif m_pts < move_pts <= m_pts * 2:
+                score_dict[enemy] = 40
+            else:
+                score_dict[enemy] = 0
+
+        return score_dict   
+    
+    def AI_move(self, c, t=None, mv_pts=None):
+        # move towards target
+        t = self.character_manager.instance_AI.target
+        mv_pts = c.c_move_points
+        
+        print(f"DEBUG: target: {t.name}, mvpoints: {mv_pts}, char: {c.name} ")
+        
+        pos, pts_cost = self.character_manager.instance_event_manager.AI_check_move(c, t.position, mv_pts, False)
+        self.character_manager.instance_board.update_player_position(c, pos)
+        self.character_manager.instance_AI.pass_cost = pts_cost
+        return pts_cost
 
 
 class MainMenu:
@@ -2636,7 +2775,7 @@ pygame.quit()
 
 # MANUAL TESTING METHOD testing repo
 
-# y = "Gimli"
+# y = "Orc"
 # x = Character(name=y).load_character((y+".pkl"))
-# x.instance_features.get_all()
+# x.actions = 1
 # x.save_character()
