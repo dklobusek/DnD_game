@@ -465,12 +465,20 @@ class HitPoints:
         self.calc_current_hp()
 
     def check_status (self, dmg, critical):
+        
+        # singleton for accesing instance of CharacterManager
+        character_manager = CharacterManager._instance
+        
         if self.status == 2 and dmg == 0:
-            print (f"{self.character.name} is already stabilized!") # TODO to be removed
+            txt = (f"{self.character.name} is already stabilized!") # TODO to be removed
+            print(txt)
+            character_manager.ins_pgame.add_log (txt)
             return 2
         
         if self.status == 2 and dmg > 0 and critical:
-            print (f"{self.character.name} was stabilized, but it is not anymore!") # TODO to be removed
+            txt = f"{self.character.name} was stabilized, but it is not anymore!"# TODO to be removed
+            print(txt)
+            character_manager.ins_pgame.add_log (txt)
             self.status=0
             self.death_throw_count_plus += 2
             return 0
@@ -481,13 +489,17 @@ class HitPoints:
         
         # if dmg was larger than pool hp then dead, set status to -1 /// DURING TURN #TODO needs to be reworked to account for current hp before last attack
         elif dmg>=self.base_hp:
-            print (f"{self.character.name} is dead! Damage {dmg} was too big for him to handle it.")
+            txt =  (f"{self.character.name} is dead! Damage {dmg} was too big for him to handle it.")
+            print(txt)
+            character_manager.ins_pgame.add_log (txt)
             self.status = -1
             return - 1
         
         # first damage to unconscious state, set character to unconscious /// DURING TURN
         elif self.current_hp<=0 and self.status == 1:
-            print (f"{self.character.name} is unconscious! Damage {dmg} was too big for him to handle it. He can still be revived")
+            txt =  (f"{self.character.name} is unconscious! Damage {dmg} was too big for him to handle it. He can still be revived")
+            print(txt)
+            character_manager.ins_pgame.add_log (txt)
             self.status = 0
             return 0
         
@@ -503,7 +515,9 @@ class HitPoints:
                 self.status = 1
                 self.death_throw_count_plus = 0
                 self.death_throw_count_minus = 0
-                print (f"You are returning back to life!")
+                txt =  (f"{self.character.name} you are returning back to life!")
+                print(txt)
+                character_manager.ins_pgame.add_log (txt)
             elif roll >= 10:
                 self.death_throw_count_minus += 1
             elif roll == 1:
@@ -511,12 +525,16 @@ class HitPoints:
             else:
                 self.death_throw_count_plus += 1
                 
-            print(f"Death saving roll for {self.character.name}: {roll}, current status: M / P {self.death_throw_count_minus} {self.death_throw_count_plus}")
+            txt = (f"Death saving roll for {self.character.name}: {roll}, current status: M / P {self.death_throw_count_minus} {self.death_throw_count_plus}")
+            print(txt)
+            character_manager.ins_pgame.add_log (txt)
                 
         #SECOND PART
         # check status based on death_throw_count, outside previous loop
         if self.death_throw_count_plus>=3:
-            print (f"{self.character.name} is dead! Death throw count reached 3 or beyond")
+            txt =  (f"{self.character.name} is dead! Death throw count reached 3 or beyond")
+            print(txt)
+            character_manager.ins_pgame.add_log (txt)
             self.death_throw_count_plus = 0
             self.death_throw_count_minus = 0
             self.status = -1
@@ -524,7 +542,9 @@ class HitPoints:
         
         # return status unconscious, cannot move during
         elif self.death_throw_count_minus>=3:
-            print (f"{self.character.name} you are stabilized!")
+            txt =  (f"{self.character.name} you are stabilized!")
+            print(txt)
+            character_manager.ins_pgame.add_log (txt)
             self.death_throw_count_plus = 0
             self.death_throw_count_minus = 0
             self.status = 2
@@ -989,6 +1009,14 @@ class InitiativeTracker:# TODO, maybe in the future
     ...
 
 class CharacterManager:
+    _instance = None  # Zmienna klasy do przechowywania instancji singletonu
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            # Tworzymy instancję, jeśli nie istnieje
+            cls._instance = super(CharacterManager, cls).__new__(cls)
+        return cls._instance
+    
     def __init__ (self):
         self.instance_action = Action(self)
         self.instance_algorithms = Algorithms(self)
