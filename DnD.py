@@ -27,6 +27,7 @@ class Data:
         self.races = self.load_races()
         self.classes = self.load_classes()
         self.armors = self.load_armors()
+        self.shields = self.load_shields()
         self.weapons = self.load_weapons()
         self.fighter = self.load_fighter()
         self.data_loaded = True  # Mark that data has been loaded
@@ -53,6 +54,16 @@ class Data:
         for _,row in data.iterrows():
             data_header = row["armor"]
             data_info = {col: row[col] for col in data.columns if col!= "armor"}
+            data_dict[data_header] = data_info
+        return data_dict
+    
+    def load_shields(self):
+        file_path = os.path.join(self.base_dir, 'DnD', 'shields.csv')
+        data = pd.read_csv(file_path, delimiter=";")
+        data_dict = {}
+        for _,row in data.iterrows():
+            data_header = row["shield"]
+            data_info = {col: row[col] for col in data.columns if col!= "shield"}
             data_dict[data_header] = data_info
         return data_dict
     
@@ -99,6 +110,12 @@ class Data:
             self.armors = Data.load_armors(self)
         return self.armors
     
+    def get_shields(self):
+        if not hasattr(self, 'shields'):
+            print("Loading shields...")
+            self.shields = Data.load_shields(self)
+        return self.shields
+    
     def get_weapons(self):
         # If weapons haven't been loaded yet, load them
         if not hasattr(self, 'weapons'):
@@ -111,7 +128,6 @@ class Data:
             self.weapons = Data.load_fighter(self)
         return self.fighter
         
-    
 class Character:
     #generating representation of character
     def __init__ (self, name, race=None, class_name = None, abilities = {}, abil_modifiers = None, hp = None, skills = None, features = None, level = 1, initiative = None):
@@ -128,6 +144,8 @@ class Character:
         self.instance_features = Features(self)
         self.instance_skills = Skills(self)
         
+        self.instance_fighter = Fighter(self)
+        
         self.name = name
         self.race = race
         self.class_name = class_name
@@ -141,12 +159,12 @@ class Character:
         
         self.actions = 1 # TODO add a method
         self.move_points = 30 # TODO add a method
-        self.aoo = 1 # attack of opportunity
+        self.reactions = 1 # attack of opportunity
         
         self.c_actions = None # no of actions furing turn, default
         self.c_move_points = None # move points during turn, default
         self.c_attacks = None # no of attacks during turn
-        self.c_aoo = None # attack of opportunity
+        self.c_reactions = None # attack of opportunity
         
         self.position = set()
         self.team = None # 1 team one, 2 team two
@@ -158,7 +176,7 @@ class Character:
         
     def __str__ (self):
         abilities_str = "\n".join([f"{key.capitalize():<15}: {value:>2}" for key, value in self.abilities.items()])
-        return (f"\n\nName: {self.name}\nLevel: {self.level}\nRace: {self.race}\nCharacter class: {self.class_name}\nBase HP: {self.instance_hp.base_hp}\nArmor class: {self.instance_armor_class.armor_class}\n::: Abilities :::\n{abilities_str}\n{self.instance_equipment}Default behaviour: {self.behaviour}\n")
+        return (f"\n\nName: {self.name}\nLevel: {self.level}\nRace: {self.race}\nCharacter class: {self.class_name}\nBase HP: {self.instance_hp.base_hp}\nArmor class: {self.instance_armor_class.armor_class}\n::: Abilities :::\n{abilities_str}\n{self.instance_equipment}Default behaviour: {self.behaviour}\nProf. bonus: {self.instance_modifiers.b_prof_bonus}\nTotal bonus to attack: {self.instance_modifiers.main_attack_mod}\nNo. of attacks: {self.instance_features.extra_atk}\nSecond winds: {self.instance_fighter.second_winds}\n")
 
     @staticmethod
     def get_data_instance():
@@ -193,6 +211,15 @@ class Character:
         character.instance_features.get_all()
         character.instance_features.update_all()
         
+        #fighter features
+        character.instance_features.choose_fighting_style()
+        character.instance_equipment.std_equip()
+        character.instance_modifiers.update_main_attack_mod()
+        
+        # fighter method
+        if character.class_name == "Fighter":
+            character.instance_fighter.get_second_winds()
+        
         
         return character
     
@@ -212,7 +239,7 @@ class Character:
             loaded_character = pickle.load(load_file)
         self.__dict__.update(loaded_character.__dict__)
         
-        # Character.re_calculate(self)
+        Character.re_calculate(self)
         
         return loaded_character
 
@@ -253,11 +280,14 @@ class Character:
     
     def re_calculate(self):
         self.instance_abil.calculate_modifiers()
-        # self.instance_armor_class.calculate_ac()
+        self.instance_modifiers.update_main_attack_mod()
+        self.instance_modifiers.update_hit_mod()
+        self.instance_armor_class.calculate_ac()
         self.instance_hp.update_hp()
         self.instance_hp.status = 1
         self.team = None # 1 team one, 2 team two
         self.control = None #1 AI controlled, 0 player controller
+        
     
 class Abilities:
     # there shouldn't be any method that initialize by its own
@@ -381,6 +411,20 @@ class CharacterClass:
         self.class_name = choose_class
         return choose_class
 
+class Fighter:
+    def __init__ (self, character):
+        self.character = character
+        
+        self.second_winds = 0
+        self.weapon_mastery = []
+        self.action_surge = []
+    
+    def get_second_winds(self):
+        lvl = self.character.level
+        data = self.character.data.get_fighter()
+        self.second_winds = data[lvl]["second_wind"]
+
+    
 class ArmorClass:
     def __init__ (self, character, armor_class =  10): #TODO implement a method to lower AC if dex is lower than 9
         self.armor_class = armor_class
@@ -389,22 +433,24 @@ class ArmorClass:
     def calculate_ac(self):
         # calculating armor class based on equipped armor and dexterity modifers, considering limitations (dex) of armor, RETURNING AND UPDATING ARMOR CLASS GLOBAL
         armor = self.character.instance_equipment.armor
-        print(armor)
-    # try:
-        ac_armor = armor["armor_class"]
-        max_dex_mod_armor = armor["max_dex_mod"]
-    # except:
-    #     raise ValueError("Calculate AC, armor not found")
-    #     ac_armor = 10
-    #     max_dex_mod_armor = 99
-            
-        dex_mod = self.character.instance_abil.abil_modifiers["Dexterity"]
+        shield = self.character.instance_equipment.offhand
+        shield = self.character.instance_equipment.offhand
+
+
+        #base modifier from armor/shield
+        a_0 = armor["armor_class"] if armor is not None else 10
+        a_1 = shield["armor_class"] if shield is not None else 0
         
-        if dex_mod>max_dex_mod_armor:
-            self.armor_class = max_dex_mod_armor+ac_armor
-        else:
-            self.armor_class = dex_mod+ac_armor
-        return 
+        #additional modifiers
+        a_2 = self.character.instance_modifiers.fs_ac
+        
+        #check dex mod compared to armor
+        dex_mod = self.character.instance_abil.abil_modifiers["Dexterity"]
+        max_dex_mod_armor = armor["max_dex_mod"] if armor is not None else 99
+        if dex_mod>max_dex_mod_armor: a_01 = max_dex_mod_armor
+        else: a_01 = dex_mod
+        
+        self.armor_class = a_0 + a_01 + a_1 + a_2
        
 class HitPoints:
     #TODO, implement a way to increase hitpoints if constituion is modified
@@ -555,6 +601,9 @@ class HitPoints:
         
     def decrease_target_hp(self, dmg):
         self.current_hp -= dmg
+    
+    def increase_target_hp(self, heal):
+        self.current_hp += heal
 
 class Features:
     def __init__ (self, character):
@@ -562,6 +611,7 @@ class Features:
         self.list = []
         
         self.extra_atk = None
+        self.fighting_styles = []
     
     def get_all (self):
         self.list = []
@@ -575,7 +625,6 @@ class Features:
             features = level_data.get("features", "")
             
             if features:
-                # Podziel umiejętności po przecinku i usuń ewentualne białe znaki
                 split_features = [feature.strip() for feature in features.split(",")]
                 self.list.extend(split_features)  # Dodajemy każdy element z osobna
                 print(self.list)
@@ -590,7 +639,92 @@ class Features:
     
     def update_all(self):
         self.update_ext_attacks()
-
+    
+    def choose_fighting_style (self):
+        # TODO implement a two weapon fighting
+        print (">>> AVAILABLE FIGHTING STYLES <<<")
+        list = ["archery", "defense", "dueling", "great weapon fighting", "interception", "protection", "two weapon fighting"]
+        print(" / ".join(list))
+        
+        # reset lists
+        self.fighting_styles = []
+        self.re_calc_fs()
+        i=0
+        no_of_fs = self.list.count("fighting style")
+        
+        while i < no_of_fs:
+            fs = input("Choose one of the fighting style: ").lower()
+            if fs in list:
+                fs = fs.replace(" ", "_")
+                method_name = f"fs_{fs}"
+                action = getattr(self, method_name, None)
+                self.fighting_styles.append(fs)
+                action()
+                i += 1
+            else:
+                print("Invalid fighting style")
+    
+    def re_calc_fs (self):
+        # zeroing all bonuses from fs
+        self.character.instance_modifiers.fs_arch_bonus_atk = 0
+        
+        self.character.instance_modifiers.fs_ac = 0
+        self.character.instance_armor_class.calculate_ac()
+        
+        self.character.instance_modifiers.fs_dmg_bonus = 0
+    
+    def fs_archery(self):
+        # no need to recalculate, constant bonus
+        self.character.instance_modifiers.fs_arch_bonus_atk = 2
+        print("Fighting style archery is chosen")
+    
+    def fs_defense(self):
+        if self.character.instance_equipment.armor is None:
+            print("Fighting style defense is chosen, but requirements are not met - no armor.")
+            return False
+        
+        if self.character.instance_equipment.armor["type"] in ["Light armor", "Medium armor", "Heavy armor"]:
+            self.character.instance_modifiers.fs_ac = 1
+            self.character.instance_armor_class.calculate_ac()
+            
+            print("Fighting style defense is chosen")
+        else:
+            print("Fighting style defense is chosen, but requirements are not met")
+    
+    def fs_dueling(self):
+        try:
+            #recalc needed when changing eq
+            
+            #reset at the beggining (in case of lost)
+            self.character.instance_modifiers.fs_dmg_bonus = 0
+            
+            wp_1 = self.character.instance_equipment.first_weapon["grip"]
+            wp_2 = self.character.instance_equipment.second_weapon
+            
+            if wp_1 == "one-handed" and wp_2 == None:
+                self.character.instance_modifiers.fs_dmg_bonus = 2
+                print("Fighting style dueling is active")
+            else:
+                print("Fighting style dueling is chosen, but requirements are not met")
+        except:
+            print("No weapon equipped, dueling fighting style not active. Equip weapon to activate it!")
+    
+    def fs_great_weapon_fighting(self):
+        # method of checking
+        try:
+            if self.character.instance_equipment.first_weapon["grip"] == "two-handed" and "great_weapon_fighting" in self.list:
+                return True
+            else: return False
+        except:
+            pass
+        
+    def fs_interception(self):
+        pass
+    
+    def fs_protection(self):
+        pass
+    
+            
 class Skills:
     def __init__ (self, character):
         self.character = character
@@ -600,8 +734,12 @@ class Modifiers:
         self.character = character
         self.ac_modifiers = None
         self.main_attack_mod = None
+        self.main_hit_mod = None
         
-        self.b_prof_bonus = None # basic proficiency bonus resulting from class and level
+        self.b_prof_bonus = 0 # basic proficiency bonus resulting from class and level
+        self.fs_arch_bonus_atk = 0 # fighting style bonus to ranged weapons
+        self.fs_ac = 0 # fighting style bonus to AC
+        self.fs_dmg_bonus = 0 # damage bonus from dueling (holding one-handed weapon in two hands)
     
     def update_ac (self, ac):
         self.ac_modifiers = ac
@@ -612,15 +750,26 @@ class Modifiers:
         
         mod1 = self.get_ability_bonus()
         mod2 = self.get_basic_prof_bonus()
+        mod3 = self.fs_arch_bonus_atk if self.character.instance_equipment.first_weapon["reach"]>10 else 0
         
-        sum = mod1+mod2
+        sum = mod1+mod2+mod3
         self.main_attack_mod = sum
         return sum
     
+    def update_hit_mod(self):
+        mod1 = self.get_ability_bonus()
+        mod2 = self.fs_dmg_bonus
+        
+        sum = mod1+mod2
+        
+        self.main_hit_mod =sum
+    
     def get_ability_bonus(self):
         # TODO - get the proper weapon
+        
         abil = (self.character.instance_equipment.first_weapon["ability"]).title()
         mod = self.character.instance_abil.abil_modifiers[abil]
+
         return mod
     
     def get_basic_prof_bonus(self):
@@ -640,9 +789,8 @@ class Equipment:
         self.armor = None
         self.body = None
         self.first_weapon = None
-        self.second_weapon = None
+        self.offhand = None
         self.backup_weapon = None
-        self.shield = None
         self.helmet = None
         self.eyes = None
         self.cloak = None
@@ -658,14 +806,23 @@ class Equipment:
         self.quiver = None
         self.instrument = None
         self.spellbook = None
+    
+    def std_equip(self):
+        armors_list = self.character.data.get_armors()
+        armor_choice = "Unarmored"
+        self.armor = {"name": armor_choice, **armors_list[armor_choice]}
         
+        weapon_list = self.character.data.get_weapons()
+        weapon_choice = "Unarmed"
+        self.first_weapon = {"name": weapon_choice, **weapon_list[weapon_choice]}
+    
     def armor_init(self):
         #TODO choosing armor from list, need to check for proficiency and str required among other stuff
         armors_list = self.character.data.get_armors()
         for armor, values in armors_list.items():
             print (f"{armor} {values}", sep = "  ///  ")
         
-        armor_choice = input("What armor do you want to wear?")
+        armor_choice = input("What armor do you want to wear?: ")
         
         if armor_choice in armors_list:
             print("New armor equipped!")
@@ -680,17 +837,39 @@ class Equipment:
         for item, stats in item_list.items():
             print (f"{item} {stats}", sep = "  ///  ")
         
-        item_choice = input("What armor do you want to wear?")
+        item_choice = input("What weapon do you want to equip?: ")
         
         if item_choice in item_list:
-            print("New first weapon equipped!")
+            print(f"{item_choice} equipped!")
             #TODO if new armor it should follow the chain of actions AND: a) update weight (if new armor) b) modify armor class and pass argument about AC and Dex mod, c) check if this type of armor can be worn (probably the first thing) d), check the strength required, probably the second
             self.first_weapon = {"name": item_choice, **item_list[item_choice]}
         else:
             print("No weapon found")
             
-    def __str__ (self):
-        return (f"Armor: {self.armor["name"]}\nMain weapon: {self.first_weapon["name"]}\n")
+    def offhand_init(self):
+        # TODO implement a method to choose second weapon and fight with it
+        weapons_list = self.character.data.get_weapons()
+        shields_list = self.character.data.get_shields()
+        
+        s_w = input("What do you want to equip? Shield or weapon?: ").lower()
+        
+        if s_w == "shield":
+            for item, stats in shields_list.items():
+                print (f"{item} {stats}", sep = "  ///  ")
+            item_choice = "shield"#input("What shield do you want to equip?: ")
+            self.offhand = {"name": item_choice, **shields_list[item_choice]}
+            print(f"{item_choice} equipped!")
+        else:
+            print("Wrong!")
+            
+    def __str__(self):
+        armor_name = self.armor["name"] if self.armor else "No armor"
+        main_weapon_name = self.first_weapon["name"] if self.first_weapon else "no main weapon"
+        offhand_name = self.offhand["shield"] if self.offhand and "shield" in self.offhand else "No shield/offhand"
+        
+        return (f"Armor: {armor_name}\n"
+                f"Main weapon: {main_weapon_name}\n"
+                f"Second weapon/shield: {offhand_name}\n")
 
 class Action:
     # set of actions that can be done in/out of combat
@@ -700,7 +879,7 @@ class Action:
     def choose_action(self, character):
         # function only for PLAYERS / outside combat
         
-        actions_list = ["equip armor", "equip first weapon"]
+        actions_list = ["equip armor", "equip first weapon", "equip offhand", "fight style"]
             
         # actions_list = ["move", "main attack", "equip armor", "equip body clothing", "equip first weapon", 
         #                 "equip weapon slot 2/shield", "equip weapon slot 3", "equip helmet", "equip googles", 
@@ -721,6 +900,11 @@ class Action:
             elif action_input == "equip first weapon":
                 self.equip_first_weapon (character)
                 continue
+            elif action_input == "equip offhand":
+                self.equip_offhand (character)
+                continue
+            elif action_input == "fight style":
+                character.instance_features.choose_fighting_style()
             elif action_input == "pass":
                 break
             else:
@@ -832,19 +1016,27 @@ class Action:
     def equip_armor (self, character):
         if character:
             character.instance_equipment.armor_init()
-            #character.instance_modifiers.update_ac(armor["Armor class"])
             character.instance_armor_class.calculate_ac()
-            #character.armor_class = AC
             
     def equip_first_weapon (self, character):
         if character:
             character.instance_equipment.first_weapon_init()
+            character.instance_features.fs_dueling()
+    
+    def equip_offhand (self, character):
+        if character:
+            character.instance_equipment.offhand_init()
+            character.instance_armor_class.calculate_ac()
             
     def check_advantage (self, character, target):
         # object expected
         if target.instance_hp.status in [-1,0,2]:
             print (f"{character.name} has an advantage against {target.name}")
             return True
+        return False
+    
+    def check_disadvantage (self, character, target):
+        # object expected # TODO
         return False
     
     def check_additional_modifiers (self, character, target):
@@ -864,15 +1056,9 @@ class Action:
         
         if target is None:
             raise AttributeError(f"Target '{target}' not found or not an object.")
-        
-        # check if character has additional bonuses against target
-        additional_mod = self.check_additional_modifiers (character, target)
-        
-        # check for advantage against target
-        advantage = self.check_advantage(character, target)
 
         # calculate attack roll against target with all modifiers
-        roll, attack_modifier, attack_roll = self.attack_roll(character, advantage, additional_mod)
+        roll, attack_modifier, attack_roll = self.attack_roll(character, target)
         
         # check for hit
         hit, critical = self.check_hit(roll, attack_roll, target)
@@ -885,24 +1071,46 @@ class Action:
         
         # calculate damage, check in damage roll function for any immunities/reductions
         if hit:
-            dmg = self.damage_roll(character, target, critical)
+            # check reaction (for now: interception)
+            red = self.interception_check(target, character)
+            
+            #roll damage
+            dmg = self.damage_roll(character, target, critical, red)
+            if red>=dmg: dmg
+            else: dmg -= red
+            
             #after hit decrease target hp and check status
             target.instance_hp.decrease_target_hp(dmg)
             status = target.instance_hp.check_status(dmg, critical)
             if status == -1:
                 self.character_manager.instance_event_manager.remove_char(target)
                 print (f"Removing {target.name} in main attack function from list")
-                    
+                
         else:
             print(f"Target missed")
                 
-    def attack_roll(self, character, advantage, additional_mod):
+    def attack_roll(self, character, target):
         #TODO needs to be calculate only once when variable changes
         character.instance_modifiers.update_main_attack_mod()
         attack_modifier = character.instance_modifiers.main_attack_mod
         
+        # check if character has additional bonuses against target
+        additional_mod = self.check_additional_modifiers (character, target)
+        
+        # check for advantage against target
+        advantage = self.check_advantage(character, target)
+        
+        #check for protection
+        disadvantage = self.protection_check(target, character)
+        
         if advantage:
             roll = max(rd.randint(1, 20), rd.randint(1, 20))
+            txt = f"Advantage against target!"
+            self.character_manager.ins_pgame.add_log(txt)
+        elif disadvantage:
+            roll = min(rd.randint(1, 20), rd.randint(1, 20))
+            txt = f"Disadvantage against target!"
+            self.character_manager.ins_pgame.add_log(txt)
         else:
             roll = rd.randint(1,20)
         
@@ -926,29 +1134,42 @@ class Action:
             elif x: return True, False
             else: return False, False
     
-    def damage_roll(self, character, target, critical):
+    def damage_roll(self, character, target, critical, red):
         # TODO versatile method
         
         # no of dice and type of dice
         wp_stat = [(character.instance_equipment.first_weapon["no_dice"]),(character.instance_equipment.first_weapon["dice_dmg"])]
+        
         # TODO check for any extra damage modifiers against target
-        add_mod = 0
+        add_mod = character.instance_modifiers.main_hit_mod
         
-        #check for modifiers from strength/dexterity (based from weapon)
-        dmg_mod = character.instance_abil.abil_modifiers["Strength"]
-        
-        if critical:
-            dmg = sum(rd.randint(1,wp_stat[1]) for _ in range(wp_stat[0] * 2))
+        # damage roll / check for fighting style great_weapon_fighting
+        if not character.instance_features.fs_great_weapon_fighting():
+            if critical:
+                dmg = sum(rd.randint(1,wp_stat[1]) for _ in range(wp_stat[0] * 2))
+            else:
+                dmg = sum(rd.randint(1,wp_stat[1]) for _ in range(wp_stat[0]))
         else:
-            dmg = sum(rd.randint(1,wp_stat[1]) for _ in range(wp_stat[0]))
-        
-        dmg_sum = dmg + add_mod + dmg_mod
+            if critical:
+                dmg = sum(3 if roll in [1, 2] else roll for roll in [rd.randint(1, wp_stat[1]) for _ in range(wp_stat[0] * 2)])
+            else:
+                dmg = sum(3 if roll in [1, 2] else roll for roll in [rd.randint(1, wp_stat[1]) for _ in range(wp_stat[0])])
+
+        dmg_sum = dmg + add_mod
         
         #TODO check target for any resistance
+        if red>=dmg_sum: dmg_sum = 0
+        else: dmg_sum -= red
         
-        txt = f"{character.name} hits {target.name} for {dmg} + {dmg_mod+add_mod} = {dmg_sum}"
+        
+        txt = f"{character.name} hits {target.name} for {dmg} + {add_mod}"
+        if red:
+            txt += f" - {red}"
+        txt += f" = {dmg_sum}"
+                
         self.character_manager.ins_pgame.add_log(txt)
         print(txt)
+
         
         return dmg_sum
     
@@ -960,7 +1181,9 @@ class Action:
         else: return False
         
     def spend_action_points(self,c):
-        ...
+        if c.c_actions>0:
+            c.c_actions -=1
+        
     def spend_attacks_points(self,c):
         print(f"DEBUG: attacks: {c.c_attacks} actions: {c.c_actions}")
         if c.c_attacks==0 and c.c_actions>0:
@@ -981,20 +1204,93 @@ class Action:
         opposing_team = (self.character_manager.instance_event_manager.team_two if c.team == 1 else self.character_manager.instance_event_manager.team_one)
         
         for e in opposing_team:
-            if e.c_aoo>0:
+            print(e)
+            if e.c_reactions>0:
                 if self.character_manager.instance_algorithms.check_weapon_reach(e) == 5:
                     if self.character_manager.instance_algorithms.is_adjacent(e.position, old_pos):
                         if not self.character_manager.instance_algorithms.is_adjacent(e.position, new_pos):
                             txt = f"Attack of opportunity! {e.name} attacks {c.name}"
                             self.character_manager.ins_pgame.add_log (txt)
                             self.main_attack(e,c)
+                            e.c_reactions -= 1
                 if self.character_manager.instance_algorithms.check_weapon_reach(e) == 10:
                     if self.character_manager.instance_algorithms.is_adjacent_10(e.position, old_pos):
                         if not self.character_manager.instance_algorithms.is_adjacent(e.position, new_pos):
                             txt = f"Attack of opportunity! {e.name} attacks {c.name}"
                             self.character_manager.instance_pgame.add_log (txt)
-                            self.main_attack(e,c)     
+                            self.main_attack(e,c)
+                            e.c_reactions -= 1     
                   
+    def interception_check (self, target, enemy):
+        # TODO check who is around target, maybe add a method later to store this information in Character class (quicker access)
+        list = self.character_manager.instance_algorithms.check_char_surround(target)
+        reduction = 0
+        
+        for char in list:
+            savior = self.character_manager.get_character(char)
+            
+            if "interception" in savior.instance_features.fighting_styles and savior.c_reactions>0:
+                if savior.instance_equipment.first_weapon is not None or savior.instance_equipment.offhand is not None:
+                    reduction += rd.randint(1,10) + savior.instance_modifiers.b_prof_bonus
+        
+                    txt = f"{savior.name} protects {target.name} from {enemy.name} and reduce {reduction} dmg!"
+                    self.character_manager.ins_pgame.add_log(txt)
+                    print(txt)
+                    savior.c_reactions -=1
+        
+        return reduction if reduction != 0 else False
+
+    def protection_check (self, target, enemy):
+        # TODO check who is around target, maybe add a method later to store this information in Character class (quicker access)
+        list = self.character_manager.instance_algorithms.check_char_surround(target)
+        try:
+            for char in list:
+                savior = self.character_manager.get_character(char)
+                
+                if "protection" in savior.instance_features.fighting_styles and savior.c_reactions>0 and savior.instance_equipment.offhand["name"]=="shield":
+            
+                        txt = f"{savior.name} tries to disturb {enemy.name} from attacking {target.name}"
+                        self.character_manager.ins_pgame.add_log(txt)
+                        print(txt)
+                        savior.c_reactions -=1
+                        return True
+        except:
+            return False
+                
+        return 
+    
+    def use_second_wind(self, c):
+        if c.instance_fighter.second_winds>0:
+            heal = rd.randint(1,10) + self.character.level
+        
+        c.instance_hp.increase_target_hp(heal)
+        
+        txt = f"{c.name} uses second wind ability and heal itself for  {heal} points"
+        self.character_manager.ins_pgame.add_log(txt)
+        print(txt)
+    
+    def cleave(self, c, t):
+        # get target if AI/None
+        if not t:
+            t = self.character_manager.instance_AI.target
+            
+        roll, attack_modifier, attack_roll = self.attack_roll(c, t)
+        hit, critical = self.check_hit(roll, attack_roll, t)
+        
+        # check for next cleave target if first attack is succesful
+        if hit:
+            e = self.character_manager.instance_action.check_char_surround_allies(t)
+            te = [self.character_manager.get_character(ally) for ally in e]
+            cleave_t = [enemy for enemy in te if self.character_manager.instance_algorithms.is_adjacent(c.pos, enemy.pos)]
+            t2 = rd.choice(cleave_t) if cleave_t else None
+        
+        c_hit = f" target hit" if hit else " target missed"
+        crit = f". Critical Hit!" if critical else ""
+        txt = f"{c.name} attacks {t.name}: {roll} + {attack_modifier} = {attack_roll},{c_hit}{crit}"
+        self.character_manager.ins_pgame.add_log(txt)
+        print(txt)
+        
+                    
 class InitiativeTracker:# TODO, maybe in the future
     def __init__ (self):
         self.turn_order = []
@@ -1120,7 +1416,11 @@ class Player:
         
         opposing_team = (self.character_manager.instance_event_manager.team_two if char.team == 1 else self.character_manager.instance_event_manager.team_one)
         
-        if enemy in opposing_team and enemy.instance_hp.status>-1 and self.character_manager.instance_event_manager.is_adjacent(char.position, enemy.position):
+        check = self.character_manager.instance_algorithms.distance(char.position, enemy.position)
+        
+        dist = True if char.instance_equipment.first_weapon["reach"]>check and char.instance_equipment.first_weapon["reach"]>10 else False
+        
+        if enemy in opposing_team and enemy.instance_hp.status>-1 and (self.character_manager.instance_event_manager.is_adjacent(char.position, enemy.position) or dist==True):
             return True
         else:
             return False
@@ -1176,7 +1476,9 @@ class Conditions:
     
     def surr_safe(self,c):
     # TODO implement a full method that is mutually exclusive with two other
-        return True     
+        if c.instance_hp.current_hp>40:
+            return True
+        else: return False
     
     def surr_threaten(self,c):
         # TODO implement a full method that is mutually exclusive with two other
@@ -1184,13 +1486,15 @@ class Conditions:
     
     def surr_danger(self,c):
         # TODO implement a full method that is mutually exclusive with two other
-        return False 
+        if c.instance_hp.current_hp<40:
+            return True
+        else: return False
     
     def melee(self,c):
         return True if c.behaviour == "melee" else False
     
     def ranged(self,c):
-         return True if c.behaviour == "ranged" else False
+         return True if c.behaviour == "ranged" and c.instance_equipment.first_weapon["reach"]>10 else False
     
     def pick_target(self, c):
         
@@ -1204,19 +1508,53 @@ class Conditions:
         if not opposing_team: return False
         
         hp_dict = self.alg.check_hp (opposing_team) # check HP score
-        ac_dict = self.alg.check_ac (opposing_team) # check AC score
-        dis_dict = self.alg.check_dist (opposing_team, c) # check cost move to target from char position
-        threat_dict = self.alg.check_threat (opposing_team) # check threat level
+        hit_dict = self.alg.check_hit_prob(c, opposing_team) # check how hard is to hit the target
+        dis_dict = self.alg.check_dist_melee (opposing_team, c) # check cost move to target from char position
+        threat_dict = self.alg.check_threat (c, opposing_team) # check threat level
+        
+        print(f"DEBUG: HP: { {character.name: score for character, score in hp_dict.items()} } HIT: { {character.name: score for character, score in hit_dict.items()} } distance: { {character.name: score for character, score in dis_dict.items()} } threat: { {character.name: score for character, score in threat_dict.items()} }")
+        
+        for enemy in hp_dict.keys():
+            hp_score = hp_dict[enemy] * 0.20
+            hit_score = hit_dict[enemy] * 0.20
+            threat_score = threat_dict[enemy] * 0.25
+            dis_score = dis_dict[enemy] * 0.35
+
+            total_score = (hp_score + hit_score + threat_score + dis_score) / 4
+
+            final_weight[enemy] = total_score
+
+        target = max(final_weight, key=final_weight.get)
+        print(f"Picked target (based on weight) is: {target.name}")
+        
+        # update target information in AI class, from what other function can draw
+        self.character_manager.instance_AI.target = target
+        return True
+    
+    def pick_target_ranged(self, c):
+        print("Pick target - ranged behaviour")
+        final_weight = {}
+        self.alg = self.character_manager.instance_algorithms
+        
+        opposing_team = (self.character_manager.instance_event_manager.team_two if c.team == 1 else self.character_manager.instance_event_manager.team_one)
+        
+        if not opposing_team: return False
+        
+        #all normalized to max 100
+        hit_dict = self.alg.check_hit_prob(c, opposing_team) # check how hard is to hit the target
+        hp_dict = self.alg.check_hp (opposing_team) # check % of HP
+        dis_dict = self.alg.check_dist_melee (opposing_team, c) # check cost move to target from char position
+        threat_dict = self.alg.check_threat (c, opposing_team) # check threat level
         
         # print(f"DEBUG: HP: { {character.name: score for character, score in hp_dict.items()} } AC: { {character.name: score for character, score in ac_dict.items()} } distance: { {character.name: score for character, score in dis_dict.items()} } threat: { {character.name: score for character, score in threat_dict.items()} }")
         
         for enemy in hp_dict.keys():
-            hp_score = hp_dict[enemy] * 0.30
-            ac_score = ac_dict[enemy] * 0.10
-            threat_score = threat_dict[enemy] * 0.25
-            dis_score = dis_dict[enemy] * 0.35
+            hp_score = hp_dict[enemy] * 0.50
+            hit_score = hit_dict[enemy] * 0.20
+            threat_score = threat_dict[enemy] * 0.10
+            dis_score = dis_dict[enemy] * 0.20
 
-            total_score = (hp_score + ac_score + threat_score + dis_score) / 4
+            total_score = (hp_score + hit_score + threat_score + dis_score) / 4
 
             final_weight[enemy] = total_score
 
@@ -1284,11 +1622,11 @@ class AI:
         self.target = None  
         
         bt =  Selector([
-                Sequence([ # safe conditions
-                    ConditionNode(self.con.surr_safe, c),
+                Sequence([ # melee behaviour
+                    ConditionNode(self.con.melee, c),
                     Selector([
-                        Sequence([ # melee behaviour
-                            ConditionNode(self.con.melee, c),
+                        Sequence([ # safe
+                            ConditionNode(self.con.surr_safe, c),
                             ConditionNode(self.con.pick_target, c),
                             Selector([
                                 Sequence([ # enemy is near
@@ -1314,19 +1652,18 @@ class AI:
                                     ])
                                 ])
                             ]),
-                        Sequence([ # ranged behaviour
-                                ConditionNode(self.con.ranged, c),
-                                ConditionNode(self.con.pick_target, c),
-                                ActionNode(self.act.main_attack, c)
+                        Sequence([ # threaten
+                                ConditionNode(self.con.surr_threaten, c)
+                                ]),
+                        Sequence([ # danger
+                                ConditionNode(self.con.surr_danger, c),
+                                ActionNode(self.act.use_second_wind,c),
+                                ActionNode(self.act.spend_action_points,c)
                                 ])      
                             ]),
                         ]),
-                Sequence([ # TODO threat conditions
-                    ConditionNode(self.con.surr_threaten, c),
-                    ActionNode(self.con.pick_target, c)
-                    ]),
-                Sequence([ # TODO danger conditions
-                    ConditionNode(self.con.surr_danger, c),
+                Sequence([ # TODO ranged behaviour
+                    ConditionNode(self.con.ranged, c), # check for behaviour and weapon
                     ActionNode(self.con.pick_target, c)
                     ])
             ])
@@ -1431,9 +1768,9 @@ class EventManager:
         self.path_queue = {}
         self.visited = {}
     
-    def aoo_manage (self):
-        for c in self.character_manager.characters:
-            c.c_aoo = c.aoo
+    def reactions_manage (self):
+        for c in self.character_manager.characters.values():
+            c.c_reactions = c.reactions
         
     def is_adjacent (self, pos, target):
         #check if pos is adjacent to target, 5 feet, 8 tiles
@@ -1808,8 +2145,8 @@ class EventManager:
         while no_team_one > 0 and no_team_two > 0: 
             
             print(f"\n\n>>>>>> ROUND {round} <<<<<<")
-            #reset state of aoo attacks
-            self.aoo_manage
+            #reset state of reactions
+            self.reactions_manage()
             no_of_char = len(self.character_manager.characters)
             self.turn_index = 0
             
@@ -2004,10 +2341,10 @@ class Board:
         self.p_board[new_y][new_x] = character.name[:2]
         character.position = new_position
         
-        print("Current board state:")
-        for row in self.p_board:
-            print(" ".join(row))
-        print("\n")
+        # print("Current board state:")
+        # for row in self.p_board:
+        #     print(" ".join(row))
+        # print("\n")
         
         if character.position != new_position:
             self.character_manager.ins_pgame.draw_board()
@@ -2039,6 +2376,7 @@ class Algorithms():
         
         self.path_queue = {}
         self.visited = {}
+        
     
     def is_char (self, pos):
         for obj in self.character_manager.characters.values():
@@ -2247,8 +2585,14 @@ class Algorithms():
             ratio = c_hp / m_hp
             score = 100 - (ratio * 100)
             score_dict[enemy] = score
+            
+        max_value = max(score_dict.values())
+        if max_value > 0:
+            normalized_dict = {e: (x / max_value) * 100 for e, x in score_dict.items()}
+        else:
+            normalized_dict = score_dict  
 
-        return score_dict
+        return normalized_dict
     
     def check_ac(self, e_team):
         score_dict = {}
@@ -2267,47 +2611,29 @@ class Algorithms():
 
         return score_dict
     
-    def check_threat(self, e_team):
-        
-        ac_min = min(enemy.instance_armor_class.armor_class for enemy in e_team)
-        ac_max = max(enemy.instance_armor_class.armor_class for enemy in e_team)
-        
-        lvl_min = min(enemy.level for enemy in e_team)
-        lvl_max = max(enemy.level for enemy in e_team)
-        
-        hp_min = min(enemy.instance_hp.current_hp for enemy in e_team)
-        hp_max = max(enemy.instance_hp.current_hp for enemy in e_team)
+    def check_threat(self, c, e_team):
         
         score_dict = {}
-        
-        for enemy in e_team:
-            hp = enemy.instance_hp.current_hp
-            if hp_max == hp_min:
-                score_1 = 0 if hp == hp_min else 100
-            else:
-                score_1 = ((hp - hp_min) / (hp_max - hp_min)) * 100
 
-            ac = enemy.instance_armor_class.armor_class
-            if ac_max == ac_min:
-                score_2 = 0 if ac == ac_min else 100
-            else:
-                score_2 = ((ac - ac_min) / (ac_max - ac_min)) * 100
+        for enemy in e_team:
+            reach = enemy.instance_equipment.first_weapon["reach"]
+            score_1 = 25 if reach>5 else 50 if reach>10 else 0
             
-            lvl = enemy.level  
-            if lvl_max == lvl_min:
-                score_3 = 0 if lvl == lvl_min else 100
-            else:
-                score_3 = ((lvl - lvl_min) / (lvl_max - lvl_min)) * 100
+            lvl = enemy.level
+            score_3 = lvl * 5 # 5-100 pts
+                
+            score_4 = 100 if enemy.instance_hp.status==1 else 0
             
-            # TODO add another methods, like spellcasters, damage etc.
-            
-            score_sum = (score_1+score_2+score_3) / 3
+            score_sum = (score_1+score_3+score_4) / 4
             
             score_dict[enemy] = score_sum
+            
+        max_value = max(score_dict.values())
+        normalized_dict = {e: (x / max_value) * 100 for e, x in score_dict.items()}
         
-        return score_dict
+        return normalized_dict
     
-    def check_dist (self, e_team, char):
+    def check_dist_melee (self, e_team, char):
         
         score_dict = {}
         move_dict = {}
@@ -2325,8 +2651,15 @@ class Algorithms():
                 score_dict[enemy] = 40
             else:
                 score_dict[enemy] = 0
+        
+        max_value = max(score_dict.values())
+        
+        if max_value > 0:
+            normalized_dict = {e: (x / max_value) * 100 for e, x in score_dict.items()}
+        else:
+            normalized_dict = score_dict  
 
-        return score_dict   
+        return normalized_dict   
     
     def AI_move(self, c, t=None, mv_pts=None):
         # move towards target
@@ -2346,6 +2679,110 @@ class Algorithms():
     def check_weapon_reach(self, c):
         reach = c.instance_equipment.first_weapon["reach"]
         return reach if reach in [5,10] else False
+    
+    def check_char_surround(self, character):
+        # method for checking enemies
+        
+        board = self.character_manager.instance_board.p_board
+        
+        try:
+            x, y = character.position
+        except AttributeError:
+            x, y = character
+        
+        team = (self.character_manager.instance_event_manager.team_two 
+                        if character.team == 2 else self.character_manager.instance_event_manager.team_one)
+        
+        surrounding_characters = []
+        
+        moves = [
+            (-1, -1), (0, -1), (1, -1),
+            (-1, 0),          (1, 0),
+            (-1, 1),  (0, 1),  (1, 1) 
+        ]
+        
+        for dx, dy in moves:
+            new_x, new_y = x + dx, y + dy
+
+            if 0 <= new_x < len(board[0]) and 0 <= new_y < len(board):
+                occupant = board[new_y][new_x]
+                print(occupant)
+                for opponent in team:
+                    if occupant == opponent.name[:2].title():
+                        surrounding_characters.append(opponent.name)
+
+        return surrounding_characters
+    
+    def check_char_surround_allies(self, character):
+        # method for checking allies adjacent to char
+        
+        board = self.character_manager.instance_board.p_board
+        
+        try:
+            x, y = character.position
+        except AttributeError:
+            x, y = character
+        
+        team = (self.character_manager.instance_event_manager.team_two 
+                        if character.team == 1 else self.character_manager.instance_event_manager.team_one)
+        
+        surrounding_characters = []
+        
+        moves = [
+            (-1, -1), (0, -1), (1, -1),
+            (-1, 0),          (1, 0),
+            (-1, 1),  (0, 1),  (1, 1) 
+        ]
+        
+        for dx, dy in moves:
+            new_x, new_y = x + dx, y + dy
+
+            if 0 <= new_x < len(board[0]) and 0 <= new_y < len(board):
+                occupant = board[new_y][new_x]
+                print(occupant)
+                for opponent in team:
+                    if occupant == opponent.name[:2].title():
+                        surrounding_characters.append(opponent.name)
+
+        return surrounding_characters
+    
+    def check_hit_possibility(self, c, e):
+        mod = c.instance_modifiers.main_attack_mod
+        adv = self.character_manager.instance_action.check_advantage(c, e)
+        dis = self.character_manager.instance_action.check_disadvantage(c, e)
+        ac = e.instance_armor_class.armor_class
+        
+        needed_roll = max(ac - mod, 1)
+        
+        if needed_roll >= 21:
+            return 5.0
+        elif needed_roll <= 1:
+            return 95.0
+        
+        # if normal roll
+        if not adv and not dis:
+            probability = (21 - needed_roll) / 20
+    
+        elif adv:
+            probability = ((21 - needed_roll) ** 2) / 400
+        
+        elif dis:
+            probability = 1 - (((needed_roll - 1) ** 2) / 400)
+        
+        print(round(probability * 100, 2))
+        return round(probability * 100, 2)
+    
+    def check_hit_prob (self, c, opposing_team):
+        
+        score_dict = {}
+        for e in opposing_team:
+            x = self.check_hit_possibility(c,e)
+            score_dict[e] = x
+        
+        max_value = max(score_dict.values())
+        normalized_dict = {e: (x / max_value) * 100 for e, x in score_dict.items()}
+        
+        return normalized_dict
 
 
 class MainMenu:
@@ -2399,7 +2836,7 @@ class MainMenu:
     
     def load_character(self):
         #TESTING MODE
-        characters_to_load = ["Orc", "Aragorn", "Gimli", "Balrog"]  # Lista nazw postaci do załadowania
+        characters_to_load = ["Orc", "Aragorn", "Gimli", "Legolas"]  # Lista nazw postaci do załadowania
         for name in characters_to_load:
             file_name = f"{name}.pkl"
             try:
@@ -2847,7 +3284,11 @@ pygame.quit()
 
 # MANUAL TESTING METHOD testing repo
 
-# y = "Orc"
+# y = "Gimli"
 # x = Character(name=y).load_character((y+".pkl"))
-# x.c_aoo = 1
+# x.reactions = 1
 # x.save_character()
+
+'''
+1. increase AI bt with second winds
+'''

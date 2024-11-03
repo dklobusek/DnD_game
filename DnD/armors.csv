@@ -1,4 +1,5 @@
 armor;type;armor_class;max_dex_mod;weight;stealth_disadvantage;strength
+Unarmored;none;10;99;0;False;0
 Padded;Light armor;11;99;8;True;0
 Leather;Light armor;11;99;10;False;0
 Studded Leather;Light armor;12;99;13;False;0
