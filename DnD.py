@@ -1216,6 +1216,7 @@ class Action:
             if status == -1:
                 self.character_manager.instance_event_manager.remove_char(target)
                 print (f"Removing {target.name} in main attack function from list")
+            
             return True
                 
         else:
@@ -1340,7 +1341,6 @@ class Action:
         opposing_team = (self.character_manager.instance_event_manager.team_two if c.team == 1 else self.character_manager.instance_event_manager.team_one)
         
         for e in opposing_team:
-            print(e)
             if e.c_reactions>0:
                 if self.character_manager.instance_algorithms.check_weapon_reach(e) == 5:
                     if self.character_manager.instance_algorithms.is_adjacent(e.position, old_pos):
@@ -1353,7 +1353,7 @@ class Action:
                     if self.character_manager.instance_algorithms.is_adjacent_10(e.position, old_pos):
                         if not self.character_manager.instance_algorithms.is_adjacent(e.position, new_pos):
                             txt = f"Attack of opportunity! {e.name} attacks {c.name}"
-                            self.character_manager.instance_pgame.add_log (txt)
+                            self.character_manager.ins_pgame.add_log (txt)
                             self.main_attack(e,c)
                             e.c_reactions -= 1     
                   
@@ -1450,6 +1450,7 @@ class Action:
                     if status == -1:
                         self.character_manager.instance_event_manager.remove_char(t2)
                         print (f"Removing {t2.name} in main attack function from list")
+
                 else:
                     print(f"Target missed")
                     cleave = f"Cleave attack! "
@@ -1546,7 +1547,7 @@ class Player:
         character.c_actions = character.actions
         character.c_attacks = 0 # until chare spend action 
         
-        # check how many attack char have
+        character.instance_features.c_no_cleave = character.instance_features.no_cleave
         
         # TODO
         self.character_manager.ins_pgame.run_game(character)
@@ -1579,8 +1580,6 @@ class Player:
             if obj.position == pos:
                 return True
         return False
-        
-    def is_enemy (self, char, pos):
         ...
     
     def pick_enemy(self, char, enemy):
@@ -1633,6 +1632,8 @@ class ConditionNode(Node):
         return result
     
 class ActionNode(Node):
+    character_manager = None  # Ustawienie jako atrybut klasy
+    
     def __init__(self, action_fn, *args):
         self.action_fn = action_fn
         self.args = args
@@ -1640,6 +1641,10 @@ class ActionNode(Node):
     def run(self):
         self.action_fn(*self.args)
         print(f"Action {self.action_fn.__name__} executed.")
+        
+        if ActionNode.character_manager:
+            ActionNode.character_manager.event_queue.put("refresh")
+
         return True
          
 class Conditions:
@@ -1746,8 +1751,9 @@ class Conditions:
     def have_mv_pts(self,c):
         return True if c.c_move_points>4 else False
     
-    def target_adj(self,c):
-        t = self.character_manager.instance_AI.target
+    def target_adj(self,c, t=None):
+        if not t:
+            t = self.character_manager.instance_AI.target
         tpos = t.position
         cpos = c.position
         x, y = cpos
@@ -1770,9 +1776,19 @@ class Conditions:
         
         return True if mv<=cost else False
     
-    def can_cleave(self,c):
+    def can_cleave(self,c, t=None):
+        if not t:
+            t = self.character_manager.instance_AI.target
         
-        return True if c.instance_equipment.first_weapon["mastery"]=="cleave" and (c.instance_equipment.first_weapon["name"].title() in c.instance_fighter.weapon_mastery) and c.instance_features.c_no_cleave>0 else False
+        print("can cleave methods:")
+        print(c.instance_equipment.first_weapon["mastery"])
+        print(c.instance_equipment.first_weapon["name"])
+        print(c.instance_fighter.weapon_mastery)
+        print(c.instance_features.c_no_cleave)
+        print(self.character_manager.instance_algorithms.is_adjacent_reach(c,t))
+        
+        
+        return True if c.instance_equipment.first_weapon["mastery"]=="cleave" and (c.instance_equipment.first_weapon["name"].title() in c.instance_fighter.weapon_mastery) and c.instance_features.c_no_cleave>0 and self.character_manager.instance_algorithms.is_adjacent_reach(c,t) else False
 
 
 class AI:
@@ -1785,8 +1801,6 @@ class AI:
     
     def AI_turn (self, c):
         print(f"\nAI {c.name} move")
-        
-        self.update_char_pygame (c)
         time.sleep(1)
         
         c.c_move_points = c.move_points
@@ -1800,7 +1814,9 @@ class AI:
         self.act = self.character_manager.instance_action
         self.alg = self.character_manager.instance_algorithms
         
-        self.target = None  
+        self.target = None
+        
+        ActionNode.character_manager = self.character_manager
         
         bt =  Selector([
                 Sequence([ # melee behaviour
@@ -1854,12 +1870,10 @@ class AI:
         
         while bt.run():
             time.sleep(1)
-            ...
 
     def main_attack_bh(self, c):
         return Sequence([
                     ConditionNode(self.con.have_actions_or_attacks, c),
-                    
                     ActionNode(self.act.main_attack, c),
                     ActionNode(self.act.spend_attacks_points, c)
                     ])
@@ -1870,12 +1884,6 @@ class AI:
                     ActionNode(self.act.cleave, c),
                     ActionNode(self.act.spend_attacks_points, c)
         ])
-        
-    
-    def update_char_pygame (self, char):
-        #update pygame info from behaviour classes
-        self.character_manager.ins_pgame.character = char
-        self.character_manager.ins_pgame.draw_turn_info()
     
 class Melee_behaviour():
     def __init__ (self, AIclass):
@@ -2517,7 +2525,7 @@ class Board:
             self.update_player_position(char, position)
     
     def update_player_position(self, character, new_position):
-        # main function for updating player position - within board and in Character instance
+        # main function for updating char position - within board and in Character instance
         print(f"{character.name} move from {character.position} to {new_position}")
         if character.position != new_position:
             txt = txt = f"{character.name} moves from {character.position} to {new_position}"
@@ -2540,6 +2548,11 @@ class Board:
         
         if character.position != new_position:
             self.character_manager.ins_pgame.draw_board()
+            
+        try:
+            1# TODO
+        except:
+            pass
         
     def check_surrounding_occupied(self, pos):
         x, y = pos
@@ -2574,6 +2587,20 @@ class Algorithms():
             if obj.position == pos:
                 return True
         return False
+    
+    def is_enemy (self, char, pos):
+        
+        opposing_team = (self.character_manager.instance_event_manager.team_two if char.team == 1 else self.character_manager.instance_event_manager.team_one)
+        
+        for obj in opposing_team:
+            if obj.position == pos:
+                return True
+        return False
+    
+    def get_char_from_pos (self, pos):
+        for c in self.character_manager.characters.values():
+            if c.position == pos:
+                return c
     
     def calc_pts_alongtheway (self, pos_start, pos_end):
         # returns squares that are intersected by line from start to end pos (straight ranged attack line)
@@ -2628,7 +2655,19 @@ class Algorithms():
             # TODO +2 AC to target
             return 50
         else: return 100
-        
+    
+    def is_adjacent_reach (self, c, t):
+        reach = c.instance_equipment.first_weapon["reach"]
+        c_pos = c.position
+        t_pos = t.position
+        if reach ==5:
+            return self.is_adjacent (c_pos, t_pos)
+        elif reach == 10:
+            return self.is_adjacent_10 (c_pos, t_pos)
+        else:
+            print("Out of reach or ranged")
+            return False
+    
     def is_adjacent (self, pos, target):
         #check if pos is adjacent to target
         x, y = pos
@@ -2865,6 +2904,8 @@ class Algorithms():
         
         self.character_manager.instance_board.update_player_position(c, new_pos)
         self.character_manager.instance_AI.pass_cost = pts_cost
+        self.character_manager.event_queue.put("refresh")
+        
         return pts_cost
     
     def check_weapon_reach(self, c):
@@ -3081,6 +3122,7 @@ class Pgame:
         self.character_manager = character_manager
         self.character = None
         self.event_queue = event_queue  # Kolejka do komunikacji między wątkami
+        self.refresh = True
         
         self.BS = 35 # TODO, need to copy from self.character_manager.instance_board.size
         self.tile_size = 30
@@ -3123,10 +3165,24 @@ class Pgame:
             "mountain": (169, 169, 169),  # Szary dla gór
         }
         
+        # logs
         self.logs = []  # Lista przechowująca logi (ostatnie 100 wpisów)
         self.max_logs = 100  # Maksymalna liczba przechowywanych wpisów
         self.log_scroll = 0  # Pozycja przewijania
         self.line_height = 20  # Wysokość jednej linii tekstu w logach
+        
+        #buttons
+        self.button_pos = {}
+        self.button_action = {}
+        
+    def update_pygame (self):
+        print(">>>>>>>>>>>>>>>>>>>>>>>>> UPDATING PYGAME <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
+        
+        self.draw_turn_info()
+        self.draw_board()
+        self.draw_info()
+        
+        pygame.display.update()
 
     def draw_board(self):
         self.screen.blit(self.background, (0, 0))
@@ -3198,15 +3254,13 @@ class Pgame:
         frame_rect = pygame.Rect(self.x_i-self.frame_i2, self.y_i, self.panel_width+self.frame_i2, self.b_height+self.frame_i2)
         pygame.draw.rect(self.screen, self.black, frame_rect, self.frame_i2)  # Rysowanie ramki wokół panelu
 
-        # Wywołanie funkcji do rysowania informacji o turze
         self.draw_turn_info()
-
-        # Wywołanie funkcji do rysowania przycisku "END TURN"
         self.draw_end_turn_button()
-        
         self.draw_info()
+        self.draw_buttons()
     
     def draw_info(self):
+        print("Draw turn info initiated")
         # Tworzenie maskującej powierzchni dla logów (obszar, w którym logi będą widoczne)
         info_surface = pygame.Surface((self.b_width + self.panel_width + (3 * self.frame_i), 100))
         
@@ -3220,6 +3274,7 @@ class Pgame:
         max_lines = info_rect.height // self.line_height  # Maksymalna liczba wierszy w ramce
         visible_logs = self.logs[max(0, len(self.logs) - max_lines - self.log_scroll): len(self.logs) - self.log_scroll]
         visible_logs.reverse()
+        print(visible_logs)
         
         log_font = pygame.font.SysFont('Arial', 16)  # Użyj czcionki Arial o rozmiarze 20
         
@@ -3324,6 +3379,68 @@ class Pgame:
         except:
             ...
     
+    def draw_buttons(self):
+        try:
+            self.button_w = 50
+            self.button_h = 50
+            
+            offset = 0
+            font = pygame.font.Font(None, 16)
+            
+            for i in range(19):
+                header_rect = pygame.Rect(self.offset_x-self.button_w-15, self.offset_y + offset, self.button_w, self.button_h)
+                
+                pygame.draw.rect(self.screen, self.white, header_rect)  
+                pygame.draw.rect(self.screen, self.black, header_rect, 2)
+                
+                # draw info
+                if i < 9:
+                    text = str(i+1)
+                elif i == 9:
+                    text = '0'
+                else:
+                    text = f"s{i-9}"
+                
+                text_surf = font.render(text, True, self.black)
+                self.screen.blit(text_surf, (header_rect.x + 5, header_rect.y + 5))
+                
+                # store buttons position
+                self.button_pos[i+1] = header_rect
+                
+                #store buttons action
+                self.button_action[i+1] = self.get_actions(i)
+                
+                offset += self.button_h+10
+        except Exception as e:
+            print(f"Error drawing buttons: {e}")
+        
+    def check_quick_buttons_click(self, pos):
+        print("checking check quick buttons click")
+        # check if pos is one of the quick access buttons
+        for button_number, rect in self.button_pos.items():
+            if rect.collidepoint(pos):
+                
+                action = self.button_action.get(button_number)
+                
+                # get action if it is an action
+                if action:
+                    action()
+                else:
+                    print("No action")
+
+    
+    def get_actions(self, i): 
+        c = self.character
+        list = {0: lambda: self.pgame_cleave()}
+        # list = {1: lambda: self.character_manager.instance_action.cleave(c)}
+        
+        if i in list:
+            return list[i]
+        else:
+            return None
+
+        
+    
     def draw_end_turn_button(self):
         
         self.end_height = 100
@@ -3344,7 +3461,7 @@ class Pgame:
         self.end_turn_button_rect = button_rect
         
     def draw_popup(self, pos, text):
-        # Wymiary popupu
+
         popup_width, popup_height = 150, 50
         popup_x, popup_y = pos
 
@@ -3370,10 +3487,11 @@ class Pgame:
             grid_x = (pos[0]-self.offset_x) // self.tile_size
             grid_y = (pos[1]-self.offset_y) // self.tile_size
             pos_board = (grid_x, grid_y)
-        
-        # Uruchomienie obliczania kosztu w osobnym wątku
-            thread = threading.Thread(target=self.calculate_cost, args=(pos_board, pos))
-            thread.start()
+            
+            self.current_popup_pos = pos
+            self.current_popup_text = "Popup Text Example"
+            
+            self.draw_popup(pos, "b")
 
     def calculate_cost(self, pos_board, pos):
         if self.character_manager.instance_algorithms.is_char(pos_board):
@@ -3401,89 +3519,132 @@ class Pgame:
 
         # Aktualizacja ekranu, aby wyczyścić popup
         pygame.display.update(popup_rect)
-
-    def run_game(self, character):
+    
+    def run_game(self, character, player=True):
         self.character = character
         clock = pygame.time.Clock()
         running = True
         last_pos = None
+        
+        self.refresh = False
 
         while running:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    running = False
+            print("check 1")
+            if player:
+                print("check 2")
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        running = False
 
-                # detecting right mouse click (right button is 3)
-                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
-                    pos = event.pos
-                    self.handle_right_click(pos)
+                    # detecting right mouse click
+                    elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
+                        pos = event.pos
+                        self.handle_right_click(pos)
+                        self.refresh = True
                     
-                # elif event.type == pygame.MOUSEWHEEL:  # Scroll event
-                #     if event.dict['y'] > 0:  # Scroll up
-                #         if self.log_scroll > 0:
-                #             self.log_scroll -= 1  # Przesuń logi o 1 linijkę w górę
-                #             self.draw_info()  # Odśwież info box
-                # elif event.dict['y'] < 0:  # Scroll down
-                #     max_scroll = max(0, len(self.logs) - (self.b_height // self.line_height))
-                #     if self.log_scroll < max_scroll:
-                #         self.log_scroll += 1  # Przesuń logi o 1 linijkę w dół
-                #         self.draw_info()  # Odśwież info box
+                    # detecting left mouse click
+                    elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                        pos = event.pos
+                        x, y = (pos[0]-self.offset_x) // self.tile_size, (pos[1]-self.offset_y) // self.tile_size
+                        if event.button == 1 and 0 <= x < self.BS and 0 <= y < self.BS: 
+                            click_pos = (x, y)
+                            
+                            cond = self.character_manager.instance_player.interpret(character, click_pos)
+                            
+                            if cond == False:
+                                self.draw_board()
+                                self.draw_interface()
+                                self.refresh = True
+                                continue
+                        
+                        # check END TURN button
+                        if event.button == 1 and self.end_turn_button_rect.collidepoint(pos):
+                            print("END TURN clicked")
+                            running = False  # Przerwanie pętli, aby zakończyć `run_game`
+                            self.refresh = True
+                        
+                        if event.button == 1:
+                            self.check_quick_buttons_click(pos)
+                    
+                    # check mouse detection and clear popup
+                    elif event.type == pygame.MOUSEMOTION:
+                        pos = event.pos
+                        if last_pos and last_pos != pos:
+                            # clear popup if active
+                            if self.current_popup_text:
+                                self.clear_popup(self.current_popup_pos)
+                                self.current_popup_text = ""  # Usunięcie tekstu popupu
+                                self.refresh = True
+
+                        last_pos = pos
+                    
+                    #always active, add more info to log
+                    self.handle_log_scroll(event)
+
+            if not player:
+                # message = self.character_manager.event_queue.get()
+                print("check 3")
+                # if message == "refresh":
+                self.refresh = True  # Aktywacja odświeżenia ekranu
+                self.update_pygame()
+                self.refresh = False
+        
+                pygame.time.delay(50)
+                pygame.display.update()
+                running = False
+
+            # Rysowanie planszy i interfejsu
+            if self.refresh:
+                self.update_pygame()
+                self.refresh = False
                 
-                # detecting left mouse click
-                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.current_popup_text:
+                self.draw_popup(self.current_popup_pos, self.current_popup_text)
+                
+            pygame.display.update()
+            clock.tick(10)
+            print("check 4")
+    
+    def get_click_pos(self):
+        
+        clock = pygame.time.Clock()
+        running = True
+        
+        while running:
+            for event in pygame.event.get():
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    
                     pos = event.pos
                     x, y = (pos[0]-self.offset_x) // self.tile_size, (pos[1]-self.offset_y) // self.tile_size
                     if event.button == 1 and 0 <= x < self.BS and 0 <= y < self.BS: 
                         click_pos = (x, y)
-                        
-                        cond = self.character_manager.instance_player.interpret(character, click_pos)
-                        
-                        if cond == False:
-                            self.draw_board()
-                            self.draw_interface()
-                            continue
-                    
-                    # Sprawdzenie kliknięcia na przycisk "END TURN"
-                    if event.button == 1 and self.end_turn_button_rect.collidepoint(pos):
-                        print("END TURN clicked")
-                        running = False  # Przerwanie pętli, aby zakończyć `run_game`
-                
-                # Sprawdzanie ruchu myszy
-                elif event.type == pygame.MOUSEMOTION:
-                    pos = event.pos
-                    if last_pos and last_pos != pos:
-                        # Czyszczenie popupu tylko, gdy został wcześniej narysowany
-                        if self.current_popup_text:
-                            self.clear_popup(self.current_popup_pos)
-                            self.current_popup_text = ""  # Usunięcie tekstu popupu
+                        print(click_pos)
+                        return click_pos
+            clock.tick(60)
 
-                    last_pos = pos
-                
-                self.handle_log_scroll(event)
-
-            # Rysowanie planszy i interfejsu
-            self.draw_board()
-            self.draw_interface()
-            
-            # Jeśli popup jest aktywny, rysuj go
-            if self.current_popup_text:
-                self.draw_popup(self.current_popup_pos, self.current_popup_text)
+    def pgame_cleave(self):
+        print("pgame_cleave")
+        c = self.character
+        pos = self.get_click_pos()
+        print("pos: ",pos)
         
-        # Aktualizacja ekranu
-        pygame.display.update()
-
-        clock.tick(10)
+        
+        t = self.character_manager.instance_algorithms.get_char_from_pos(pos) if self.character_manager.instance_algorithms.is_enemy(c,pos) else None
+        
+        print("enemy: ", t.name)
+        if t and self.character_manager.instance_conditions.can_cleave(c,t):
+            self.character_manager.instance_action.cleave(c,t)
+        else:
+            return False
 
 os.system('cls')
-
-
 main_menu = MainMenu()
 main_menu.display_menu()
 pygame.quit()
 
 # MANUAL TESTING METHOD testing repo
 
-# y = "Uruk"
+# y = "Gimli"
 # x = Character(name=y).load_character((y+".pkl"))
 # x.instance_features.no_cleave = 1
 # x.save_character()
