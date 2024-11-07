@@ -7,6 +7,7 @@ import numpy as np
 from shapely.geometry import LineString, box
 import threading
 from datetime import datetime
+import multiprocessing
 
 class Data:
     # Class for loading data, Singleton approach
@@ -1216,7 +1217,6 @@ class Action:
             if status == -1:
                 self.character_manager.instance_event_manager.remove_char(target)
                 print (f"Removing {target.name} in main attack function from list")
-            
             return True
                 
         else:
@@ -1450,7 +1450,6 @@ class Action:
                     if status == -1:
                         self.character_manager.instance_event_manager.remove_char(t2)
                         print (f"Removing {t2.name} in main attack function from list")
-
                 else:
                     print(f"Target missed")
                     cleave = f"Cleave attack! "
@@ -1487,27 +1486,22 @@ class CharacterManager:
         return cls._instance
     
     def __init__ (self):
-        self.instance_action = Action(self)
-        self.instance_algorithms = Algorithms(self)
-        self.instance_conditions = Conditions(self)
-        self.instance_event_manager = EventManager(self)
-        self.instance_AI = AI(self)
-        self.instance_player = Player(self)
-        self.instance_board = Board(self)
-        
-        self.event_queue = queue.Queue()
-        self.ins_pgame = Pgame(self, self.event_queue)
-        
-        self.characters = {}
-        self.initiative_order = []
-        
-        self.screen = None
-
-    def initialize_screen(self):
-        pygame.init()
-        screen = pygame.display.set_mode((1500, 1200))
-        pygame.display.set_caption("Board Visualization")
-        self.ins_pgame.screen = screen   
+        if not hasattr(self, '_initialized'):
+            self.instance_action = Action(self)
+            self.instance_algorithms = Algorithms(self)
+            self.instance_conditions = Conditions(self)
+            self.instance_event_manager = EventManager(self)
+            self.instance_AI = AI(self)
+            self.instance_player = Player(self)
+            self.instance_board = Board(self)
+            
+            self.event_queue = queue.Queue()
+            self.ins_pgame = Pgame(self)
+            
+            self.characters = {}
+            self.initiative_order = []
+            
+        self._initialized = True  
           
     def add_character(self, character):
         self.characters[character.name] = character
@@ -1548,9 +1542,11 @@ class Player:
         character.c_attacks = 0 # until chare spend action 
         
         character.instance_features.c_no_cleave = character.instance_features.no_cleave
+
+        # self.character_manager.ins_pgame.update_pygame(character)
         
         # TODO
-        self.character_manager.ins_pgame.run_game(character)
+        self.character_manager.ins_pgame.event_queue.put(('run_game', character))
         
     def interpret (self, char, pos):
         #interpret what user click on Pygame board and do appropriate action
@@ -1632,19 +1628,20 @@ class ConditionNode(Node):
         return result
     
 class ActionNode(Node):
-    character_manager = None  # Ustawienie jako atrybut klasy
     
     def __init__(self, action_fn, *args):
         self.action_fn = action_fn
         self.args = args
+        self.character_manager = CharacterManager()
 
     def run(self):
         self.action_fn(*self.args)
         print(f"Action {self.action_fn.__name__} executed.")
         
-        if ActionNode.character_manager:
-            ActionNode.character_manager.event_queue.put("refresh")
+        if self.character_manager.ins_pgame:
+            self.character_manager.ins_pgame.main_loop()
 
+        time.sleep(0.5)
         return True
          
 class Conditions:
@@ -1801,6 +1798,8 @@ class AI:
     
     def AI_turn (self, c):
         print(f"\nAI {c.name} move")
+        
+        self.character_manager.ins_pgame.update_pygame (c)
         time.sleep(1)
         
         c.c_move_points = c.move_points
@@ -1814,9 +1813,7 @@ class AI:
         self.act = self.character_manager.instance_action
         self.alg = self.character_manager.instance_algorithms
         
-        self.target = None
-        
-        ActionNode.character_manager = self.character_manager
+        self.target = None  
         
         bt =  Selector([
                 Sequence([ # melee behaviour
@@ -1870,10 +1867,12 @@ class AI:
         
         while bt.run():
             time.sleep(1)
+            ...
 
     def main_attack_bh(self, c):
         return Sequence([
                     ConditionNode(self.con.have_actions_or_attacks, c),
+                    
                     ActionNode(self.act.main_attack, c),
                     ActionNode(self.act.spend_attacks_points, c)
                     ])
@@ -1967,6 +1966,8 @@ class EventManager:
         # board and move variables
         self.path_queue = {}
         self.visited = {}
+        
+        self.char = None # active char turn
     
     def reactions_manage (self):
         for c in self.character_manager.characters.values():
@@ -2328,36 +2329,36 @@ class EventManager:
         self.update_characters_info()
         
         #initialize Pygame
-        self.character_manager.initialize_screen()
-        self.character_manager.ins_pgame.draw_board()
-        self.character_manager.ins_pgame.draw_interface()
+        self.character_manager.ins_pgame.initialize_screen()
         
         #start combat
         print(f"\nCombat started.")
+
         self.turn()
-    
+        
     def turn(self):
-        # setting 1 for purpose of condition while loop
+        
         no_team_one = 1
         no_team_two = 1
         round = 1
-         
+        
+        print("turn before while")
+        
         while no_team_one > 0 and no_team_two > 0: 
             
             print(f"\n\n>>>>>> ROUND {round} <<<<<<")
+            
             #reset state of reactions
             self.reactions_manage()
+            
             no_of_char = len(self.character_manager.characters)
             self.turn_index = 0
             
             for _ in range(no_of_char):
-                
-                # if self.character_manager.instance_action.screen is not None:
-                #     pygame.event.pump()
-                
+        
                 no_team_one = len(self.team_two)
                 no_team_two = len(self.team_one)
-                # print(f"DEBUG: no of teams in 1/2 {no_team_one} {no_team_two}")
+
                 if no_team_one==0:
                     print ("Team one, you won the battle!")
                     self.character_manager.instance_action.screen = None
@@ -2399,7 +2400,11 @@ class EventManager:
                 if status in [-1,0,2]:
                     self.turn_index += 1
                     continue
-                # print(f"DEBUG, team 1/2, type of object: {type(self.team_one)} {type(self.team_two)}")
+                
+                self.char = current_character
+
+                #refresh pygame window
+                self.character_manager.ins_pgame.main_loop()
                 
                 if current_character in self.team_one:
                     if self.control_team_one:
@@ -2550,7 +2555,7 @@ class Board:
             self.character_manager.ins_pgame.draw_board()
             
         try:
-            1# TODO
+            self.character_manager.ins_pgame.update_pygame(character)
         except:
             pass
         
@@ -2904,8 +2909,6 @@ class Algorithms():
         
         self.character_manager.instance_board.update_player_position(c, new_pos)
         self.character_manager.instance_AI.pass_cost = pts_cost
-        self.character_manager.event_queue.put("refresh")
-        
         return pts_cost
     
     def check_weapon_reach(self, c):
@@ -3118,10 +3121,14 @@ class MainMenu:
         ...
 
 class Pgame:
-    def __init__(self, character_manager, event_queue) -> None:
+    def __init__(self, character_manager) -> None:
+        
+        self.running_main = True
+        self.running_player = False
+        
         self.character_manager = character_manager
         self.character = None
-        self.event_queue = event_queue  # Kolejka do komunikacji między wątkami
+        self.event_queue = queue.Queue()  # Kolejka do komunikacji między wątkami
         self.refresh = True
         
         self.BS = 35 # TODO, need to copy from self.character_manager.instance_board.size
@@ -3174,15 +3181,24 @@ class Pgame:
         #buttons
         self.button_pos = {}
         self.button_action = {}
+    
+    def initialize_screen(self):
+        pygame.init()
+        self.screen = pygame.display.set_mode((1500, 1200))
+        pygame.display.set_caption("Board Visualization")
+
+        self.draw_board()
+        self.draw_interface()
         
-    def update_pygame (self):
-        print(">>>>>>>>>>>>>>>>>>>>>>>>> UPDATING PYGAME <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
+        self.main_loop()
         
+    def update_pygame (self, char):
+        
+        self.character = char
         self.draw_turn_info()
         self.draw_board()
         self.draw_info()
-        
-        pygame.display.update()
+        self.refresh = True
 
     def draw_board(self):
         self.screen.blit(self.background, (0, 0))
@@ -3255,12 +3271,12 @@ class Pgame:
         pygame.draw.rect(self.screen, self.black, frame_rect, self.frame_i2)  # Rysowanie ramki wokół panelu
 
         self.draw_turn_info()
+        self.draw_char_info()
         self.draw_end_turn_button()
         self.draw_info()
         self.draw_buttons()
     
     def draw_info(self):
-        print("Draw turn info initiated")
         # Tworzenie maskującej powierzchni dla logów (obszar, w którym logi będą widoczne)
         info_surface = pygame.Surface((self.b_width + self.panel_width + (3 * self.frame_i), 100))
         
@@ -3274,7 +3290,6 @@ class Pgame:
         max_lines = info_rect.height // self.line_height  # Maksymalna liczba wierszy w ramce
         visible_logs = self.logs[max(0, len(self.logs) - max_lines - self.log_scroll): len(self.logs) - self.log_scroll]
         visible_logs.reverse()
-        print(visible_logs)
         
         log_font = pygame.font.SysFont('Arial', 16)  # Użyj czcionki Arial o rozmiarze 20
         
@@ -3350,7 +3365,7 @@ class Pgame:
         
     def draw_turn_info(self):
         try:
-            self.draw_char_info()
+            char = self.character_manager.instance_event_manager.char
             
             # Rysowanie paska z nazwą postaci na górze z ramką
             self.turn_height = 60
@@ -3427,8 +3442,7 @@ class Pgame:
                     action()
                 else:
                     print("No action")
-
-    
+  
     def get_actions(self, i): 
         c = self.character
         list = {0: lambda: self.pgame_cleave()}
@@ -3439,8 +3453,6 @@ class Pgame:
         else:
             return None
 
-        
-    
     def draw_end_turn_button(self):
         
         self.end_height = 100
@@ -3519,83 +3531,84 @@ class Pgame:
 
         # Aktualizacja ekranu, aby wyczyścić popup
         pygame.display.update(popup_rect)
-    
-    def run_game(self, character, player=True):
+        
+    def main_loop (self):
+        print(">>>>>>>> MAIN LOOP PYGAME <<<<<<<<<<<<")
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.running_main = False
+        
+        if not self.event_queue.empty():
+            message, character = self.event_queue.get()
+            if message == 'run_game':
+                self.run_game(character)
+
+        
+        self.draw_interface()
+        self.draw_board()
+
+        pygame.display.update()
+
+    def run_game(self, character):
         self.character = character
         clock = pygame.time.Clock()
-        running = True
         last_pos = None
-        
-        self.refresh = False
 
-        while running:
-            print("check 1")
-            if player:
-                print("check 2")
-                for event in pygame.event.get():
-                    if event.type == pygame.QUIT:
-                        running = False
+        self.refresh = True
+        self.running_player = True
 
-                    # detecting right mouse click
-                    elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
-                        pos = event.pos
-                        self.handle_right_click(pos)
+        while self.running_player:
+            for event in pygame.event.get():
+                # detecting right mouse click
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
+                    pos = event.pos
+                    self.handle_right_click(pos)
+                    self.refresh = True
+                
+                # detecting left mouse click
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    pos = event.pos
+                    x, y = (pos[0]-self.offset_x) // self.tile_size, (pos[1]-self.offset_y) // self.tile_size
+                    if event.button == 1 and 0 <= x < self.BS and 0 <= y < self.BS: 
+                        click_pos = (x, y)
+                        
+                        cond = self.character_manager.instance_player.interpret(character, click_pos)
+                        
+                        if cond == False:
+                            self.draw_board()
+                            self.draw_interface()
+                            self.refresh = True
+                            continue
+                    
+                    # check END TURN button
+                    if event.button == 1 and self.end_turn_button_rect.collidepoint(pos):
+                        print("END TURN clicked")
+                        self.running_player = False  # Przerwanie pętli, aby zakończyć `run_game`
                         self.refresh = True
                     
-                    # detecting left mouse click
-                    elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                        pos = event.pos
-                        x, y = (pos[0]-self.offset_x) // self.tile_size, (pos[1]-self.offset_y) // self.tile_size
-                        if event.button == 1 and 0 <= x < self.BS and 0 <= y < self.BS: 
-                            click_pos = (x, y)
-                            
-                            cond = self.character_manager.instance_player.interpret(character, click_pos)
-                            
-                            if cond == False:
-                                self.draw_board()
-                                self.draw_interface()
-                                self.refresh = True
-                                continue
-                        
-                        # check END TURN button
-                        if event.button == 1 and self.end_turn_button_rect.collidepoint(pos):
-                            print("END TURN clicked")
-                            running = False  # Przerwanie pętli, aby zakończyć `run_game`
+                    if event.button == 1:
+                        self.check_quick_buttons_click(pos)
+                
+                # check mouse detection and clear popup
+                elif event.type == pygame.MOUSEMOTION:
+                    pos = event.pos
+                    if last_pos and last_pos != pos:
+                        # clear popup if active
+                        if self.current_popup_text:
+                            self.clear_popup(self.current_popup_pos)
+                            self.current_popup_text = ""  # Usunięcie tekstu popupu
                             self.refresh = True
-                        
-                        if event.button == 1:
-                            self.check_quick_buttons_click(pos)
-                    
-                    # check mouse detection and clear popup
-                    elif event.type == pygame.MOUSEMOTION:
-                        pos = event.pos
-                        if last_pos and last_pos != pos:
-                            # clear popup if active
-                            if self.current_popup_text:
-                                self.clear_popup(self.current_popup_pos)
-                                self.current_popup_text = ""  # Usunięcie tekstu popupu
-                                self.refresh = True
 
-                        last_pos = pos
-                    
-                    #always active, add more info to log
-                    self.handle_log_scroll(event)
-
-            if not player:
-                # message = self.character_manager.event_queue.get()
-                print("check 3")
-                # if message == "refresh":
-                self.refresh = True  # Aktywacja odświeżenia ekranu
-                self.update_pygame()
-                self.refresh = False
-        
-                pygame.time.delay(50)
-                pygame.display.update()
-                running = False
+                    last_pos = pos
+                
+                #always active, add more info to log
+                self.handle_log_scroll(event)
 
             # Rysowanie planszy i interfejsu
             if self.refresh:
-                self.update_pygame()
+                self.draw_board()
+                self.draw_interface()
                 self.refresh = False
                 
             if self.current_popup_text:
@@ -3603,7 +3616,6 @@ class Pgame:
                 
             pygame.display.update()
             clock.tick(10)
-            print("check 4")
     
     def get_click_pos(self):
         
@@ -3628,7 +3640,6 @@ class Pgame:
         pos = self.get_click_pos()
         print("pos: ",pos)
         
-        
         t = self.character_manager.instance_algorithms.get_char_from_pos(pos) if self.character_manager.instance_algorithms.is_enemy(c,pos) else None
         
         print("enemy: ", t.name)
@@ -3638,8 +3649,11 @@ class Pgame:
             return False
 
 os.system('cls')
+
 main_menu = MainMenu()
 main_menu.display_menu()
+
+# main_menu.display_menu()
 pygame.quit()
 
 # MANUAL TESTING METHOD testing repo
