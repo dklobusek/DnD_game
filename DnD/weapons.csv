@@ -1,38 +1,38 @@
-weapon;no_dice;dice_dmg;dice_dmg_vers;damage_type;reach;weight;properties;mastery;proficiency_required;ability;grip
-Unarmed;1;1;;Bludgeoning;5;0;;;Simple Melee;strength;one-handed
-Club;1;4;;Bludgeoning;5;2;Light;slow;Simple Melee;strength;one-handed
-Dagger;1;4;;Piercing;5;1;Finesse, Light, Thrown (20/60);nick;Simple Melee;both;one-handed
-Greatclub;1;8;;Bludgeoning;5;10;;push;Simple Melee;strength;two-handed
-Handaxe;1;6;;Slashing;5;2;Light, Thrown (20/60);vex;Simple Melee;strength;one-handed
-Javelin;1;6;;Piercing;5;2;Thrown (30/120);slow;Simple Melee;strength;one-handed
-Light Hammer;1;4;;Bludgeoning;5;2;Light, Thrown (20/60);nick;Simple Melee;strength;one-handed
-Mace;1;6;;Bludgeoning;5;4;;sap;Simple Melee;strength;one-handed
-Quarterstaff;1;6;8;Bludgeoning;5;4;Versatile (1d8);topple;Simple Melee;strength;one-handed
-Sickle;1;4;;Slashing;5;2;Light;nick;Simple Melee;strength;one-handed
-Spear;1;6;8;Piercing;5;3;Thrown (20/60), Versatile (1d8);sap;Simple Melee;strength;one-handed
-Battleaxe;1;8;10;Slashing;5;4;Versatile (1d10);topple;Martial Melee;strength;one-handed
-Flail;1;8;;Bludgeoning;5;2;None;sap;Martial Melee;strength;one-handed
-Glaive;1;1;;Slashing;10;6;Heavy, Reach, Two-handed;graze;Martial Melee;strength;two-handed
-Greataxe;1;12;;Slashing;5;7;Heavy, Two-handed;cleave;Martial Melee;strength;two-handed
-Greatsword;2;6;;Slashing;5;6;Heavy, Two-handed;graze;Martial Melee;strength;two-handed
-Halberd;1;1;;Slashing;10;6;Heavy, Reach, Two-handed;cleave;Martial Melee;strength;two-handed
-Lance;1;12;;Piercing;10;6;Reach, Special;topple;Martial Melee;strength;one-handed
-Longsword;1;8;10;Slashing;5;3;Versatile (1d10);sap;Martial Melee;strength;one-handed
-Maul;2;6;;Bludgeoning;5;10;Heavy, Two-handed;topple;Martial Melee;strength;two-handed
-Morningstar;1;8;;Piercing;5;4;;sap;Martial Melee;strength;one-handed
-Pike;1;1;;Piercing;10;18;Heavy, Reach, Two-handed;push;Martial Melee;strength;two-handed
-Rapier;1;8;;Piercing;5;2;Finesse;vex;Martial Melee;both;one-handed
-Scimitar;1;6;;Slashing;5;3;Finesse, Light;nick;Martial Melee;both;one-handed
-Shortsword;1;6;;Piercing;5;2;Finesse, Light;vex;Martial Melee;both;one-handed
-Trident;1;8;10;Piercing;5;4;Thrown (20/60), Versatile (1d8);topple;Martial Melee;strength;one-handed
-War Pick;1;8;;Piercing;5;2;;sap;Martial Melee;strength;one-handed
-Warhammer;1;8;10;Bludgeoning;5;2;Versatile (1d10);push;Martial Melee;strength;one-handed
-Whip;1;4;;Slashing;10;3;Finesse, Reach;slow;Martial Melee;both;one-handed
-Light Crossbow;1;8;;Piercing;80;5;Ammunition, Loading, Two-handed;slow;Simple Ranged;dexterity;two-handed
-Dart;1;4;;Piercing;20;0.25;Finesse, Thrown;vex;Simple Ranged;both;one-handed
-Shortbow;1;6;;Piercing;80;2;Ammunition, Two-handed;vex;Simple Ranged;dexterity;two-handed
-Sling;1;4;;Bludgeoning;30;0.25;Ammunition;slow;Simple Ranged;dexterity;one-handed
-Blowgun;1;1;;Piercing;25;1;Ammunition, Loading;vex;Martial Ranged;dexterity;one-handed
-Hand Crossbow;1;6;;Piercing;30;3;Ammunition, Light, Loading;vex;Martial Ranged;dexterity;one-handed
-Heavy Crossbow;1;1;;Piercing;100;18;Ammunition, Heavy, Loading, Two-handed;push;Martial Ranged;dexterity;two-handed
-Longbow;1;8;;Piercing;150;2;Ammunition, Heavy, Two-handed;slow;Martial Ranged;dexterity;two-handed
+weapon;no_dice;dice_dmg;dice_dmg_vers;damage_type;reach;weight;lh;properties;mastery;proficiency_required;ability;grip
+Unarmed;1;1;;Bludgeoning;5;0;normal;;;Simple Melee;strength;one-handed
+Club;1;4;;Bludgeoning;5;2;light;;slow;Simple Melee;strength;one-handed
+Dagger;1;4;;Piercing;5;1;light;Thrown (20/60);nick;Simple Melee;both;one-handed
+Greatclub;1;8;;Bludgeoning;5;10;normal;;push;Simple Melee;strength;two-handed
+Handaxe;1;6;;Slashing;5;2;light;Thrown (20/60);vex;Simple Melee;strength;one-handed
+Javelin;1;6;;Piercing;5;2;normal;Thrown (30/120);slow;Simple Melee;strength;one-handed
+Light Hammer;1;4;;Bludgeoning;5;2;light;Thrown (20/60);nick;Simple Melee;strength;one-handed
+Mace;1;6;;Bludgeoning;5;4;normal;;sap;Simple Melee;strength;one-handed
+Quarterstaff;1;6;8;Bludgeoning;5;4;normal;;topple;Simple Melee;strength;one-handed
+Sickle;1;4;;Slashing;5;2;light;;nick;Simple Melee;strength;one-handed
+Spear;1;6;8;Piercing;5;3;normal;Thrown (20/60);sap;Simple Melee;strength;one-handed
+Battleaxe;1;8;10;Slashing;5;4;normal;;topple;Martial Melee;strength;one-handed
+Flail;1;8;;Bludgeoning;5;2;normal;;sap;Martial Melee;strength;one-handed
+Glaive;1;1;;Slashing;10;6;heavy;;graze;Martial Melee;strength;two-handed
+Greataxe;1;12;;Slashing;5;7;heavy;;cleave;Martial Melee;strength;two-handed
+Greatsword;2;6;;Slashing;5;6;heavy;;graze;Martial Melee;strength;two-handed
+Halberd;1;1;;Slashing;10;6;heavy;;cleave;Martial Melee;strength;two-handed
+Lance;1;12;;Piercing;10;6;normal;Reach, Special;topple;Martial Melee;strength;one-handed
+Longsword;1;8;10;Slashing;5;3;normal;;sap;Martial Melee;strength;one-handed
+Maul;2;6;;Bludgeoning;5;10;heavy;Heavy, Two-handed;topple;Martial Melee;strength;two-handed
+Morningstar;1;8;;Piercing;5;4;normal;;sap;Martial Melee;strength;one-handed
+Pike;1;1;;Piercing;10;18;heavy;;push;Martial Melee;strength;two-handed
+Rapier;1;8;;Piercing;5;2;normal;Finesse;vex;Martial Melee;both;one-handed
+Scimitar;1;6;;Slashing;5;3;light;Finesse, Light;nick;Martial Melee;both;one-handed
+Shortsword;1;6;;Piercing;5;2;light;Finesse, Light;vex;Martial Melee;both;one-handed
+Trident;1;8;10;Piercing;5;4;normal;Thrown (20/60), Versatile (1d8);topple;Martial Melee;strength;one-handed
+War Pick;1;8;;Piercing;5;2;normal;;sap;Martial Melee;strength;one-handed
+Warhammer;1;8;10;Bludgeoning;5;2;normal;Versatile (1d10);push;Martial Melee;strength;one-handed
+Whip;1;4;;Slashing;10;3;normal;Finesse, Reach;slow;Martial Melee;both;one-handed
+Light Crossbow;1;8;;Piercing;80;5;normal;Ammunition, Loading, Two-handed;slow;Simple Ranged;dexterity;two-handed
+Dart;1;4;;Piercing;20;0.25;normal;Finesse, Thrown;vex;Simple Ranged;both;one-handed
+Shortbow;1;6;;Piercing;80;2;normal;Ammunition, Two-handed;vex;Simple Ranged;dexterity;two-handed
+Sling;1;4;;Bludgeoning;30;0.25;normal;Ammunition;slow;Simple Ranged;dexterity;one-handed
+Blowgun;1;1;;Piercing;25;1;normal;Ammunition, Loading;vex;Martial Ranged;dexterity;one-handed
+Hand Crossbow;1;6;;Piercing;30;3;light;Ammunition, Light, Loading;vex;Martial Ranged;dexterity;one-handed
+Heavy Crossbow;1;1;;Piercing;100;18;heavy;Ammunition, Heavy, Loading, Two-handed;push;Martial Ranged;dexterity;two-handed
+Longbow;1;8;;Piercing;150;2;heavy;Ammunition, Heavy, Two-handed;slow;Martial Ranged;dexterity;two-handed
