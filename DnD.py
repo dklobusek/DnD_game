@@ -1270,14 +1270,14 @@ class Action:
         if cond.can_graze(c):
             self.graze(c,t)
     
-    def pre_attack (self, c, t):
+    def pre_attack (self, c, t=None):
         # get target if AI/None
-        if not target:
-            target = self.character_manager.instance_AI.target
+        if not t:
+            t = self.character_manager.instance_AI.target
             
         # get instance object if str
-        if isinstance(target, str):
-            target = self.character_manager.get_character(target)
+        if isinstance(t, str):
+            t = self.character_manager.get_character(t)
         
         cond = self.character_manager.instance_conditions
         
@@ -1338,7 +1338,7 @@ class Action:
             red = self.interception_check(target, character)
             
             #roll damage
-            dmg = self.damage_roll(character, target, critical, 1, red)
+            dmg = self.damage_roll(character, target, critical, red, 1)
             if red>=dmg: dmg
             else: dmg -= red
             
@@ -1409,7 +1409,8 @@ class Action:
             wp_stat = [(character.instance_equipment.first_weapon["no_dice"]),(character.instance_equipment.first_weapon["dice_dmg"])]
         elif w==2:
             wp_stat = [(character.instance_equipment.offhand["no_dice"]),(character.instance_equipment.offhand["dice_dmg"])]
-        
+        else:
+            raise ValueError ("no wp_stat, no w in previous function")
         
         # TODO check for any extra damage modifiers against target
         if no_dmg_mod == False and w==1:
@@ -1708,17 +1709,12 @@ class Player:
         #interpret what user click on Pygame board and do appropriate action
         print (f"DEBUG: interpret function, for {char.name} on pos: {pos}")
         
-        if self.is_char(pos):
-            for enemy in self.character_manager.characters.values():
-                if enemy.position == pos and (char.c_actions>0 or char.c_attacks>0):
-                    if self.pick_enemy (char, enemy):
-                        self.character_manager.instance_action.pre_attack(char, enemy)
-                        if char.c_attacks>0:
-                           char.c_attacks -= 1
-                        elif char.c_attacks==0 and char.c_actions>0:
-                            char.c_attacks = char.instance_features.extra_atk
-                            char.c_actions -= 1
-                            char.c_attacks -= 1             
+        if self.character_manager.instance_algorithms.is_enemy (char, pos):
+            e = self.character_manager.instance_algorithms.get_char_from_pos (pos)
+            if self.valid_enemy (char, e) and self.character_manager.instance_conditions.have_actions_or_attacks(char):
+                self.character_manager.instance_action.pre_attack(char, e)
+                self.character_manager.instance_action.spend_attacks_points (char)
+         
         else:
         # check possibility of movement
             cost = self.character_manager.instance_action.move(char, pos, char.c_move_points)
@@ -1734,16 +1730,13 @@ class Player:
         return False
         ...
     
-    def pick_enemy(self, char, enemy):
-        # checking if it is a valid target
-        
-        opposing_team = (self.character_manager.instance_event_manager.team_two if char.team == 1 else self.character_manager.instance_event_manager.team_one)
-        
+    def valid_enemy (self, char, enemy):
+        #check the distance to the target
         check = self.character_manager.instance_algorithms.distance(char.position, enemy.position)
         
         dist = True if char.instance_equipment.first_weapon["reach"]>check and char.instance_equipment.first_weapon["reach"]>10 else False
         
-        if enemy in opposing_team and enemy.instance_hp.status>-1 and (self.character_manager.instance_event_manager.is_adjacent(char.position, enemy.position) or dist==True):
+        if enemy.instance_hp.status>-1 and (self.character_manager.instance_algorithms.is_adjacent_reach(char, enemy) or dist==True):
             return True
         else:
             return False
@@ -1933,16 +1926,13 @@ class Conditions:
         if not t:
             t = self.character_manager.instance_AI.target
         
-        print("can cleave methods:")
-        print(c.instance_equipment.first_weapon["mastery"])
-        print(c.instance_equipment.first_weapon["name"])
-        print(c.instance_features.weapon_mastery)
-        print(c.instance_features.c_no_cleave)
-        print(self.character_manager.instance_algorithms.is_adjacent_reach(c,t))
+        c1 = True if c.instance_equipment.first_weapon["mastery"]=="cleave" else False
+        c2 = True if c.instance_equipment.first_weapon["name"].title() in c.instance_features.weapon_mastery else False
+        c3 = True if c.instance_features.c_no_cleave>0 else False
+        c4 = True if self.character_manager.instance_algorithms.is_adjacent_reach(c,t) else False
         
-        
-        return True if (c.instance_equipment.first_weapon["mastery"]=="cleave" or c.instance_equipment.offhand["mastery"]=="cleave") and (c.instance_equipment.first_weapon["name"].title() in c.instance_features.weapon_mastery) and c.instance_features.c_no_cleave>0 and self.character_manager.instance_algorithms.is_adjacent_reach(c,t) else False
-
+        return c1 and c2 and c3 and c4
+    
     def can_secondwind(self, c):
         return True if c.instance_fighter.second_winds>0 else False
     
@@ -2848,6 +2838,7 @@ class Algorithms():
         else: return 100
     
     def is_adjacent_reach (self, c, t):
+        print(c)
         reach = c.instance_equipment.first_weapon["reach"]
         c_pos = c.position
         t_pos = t.position
